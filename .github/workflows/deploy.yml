@@ -38,7 +38,7 @@ jobs:
           DB_CONNECTION: sqlite
           DB_DATABASE: database/database.sqlite
         run: |
-          mkdir /tests/Unit
+          mkdir tests/Unit
           php artisan test
 
   # -----------------------------------------------------------------
