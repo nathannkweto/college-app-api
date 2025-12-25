@@ -49,7 +49,7 @@ jobs:
       - name: Run Migrations
         run: |
           composer install --no-dev --prefer-dist --no-scripts --ignore-platform-reqs
-          php artisan migrate --force
+          php artisan migrate:fresh --force
         env:
           DB_CONNECTION: pgsql
           DB_HOST: ${{ secrets.DB_HOST }}
