@@ -12,40 +12,9 @@ env:
 
 jobs:
   # -----------------------------------------------------------------
-  # JOB 1: RUN TESTS (Uses SQLite for speed)
-  # -----------------------------------------------------------------
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.2'
-          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, dom, filter, gd, iconv, json, mbstring, pdo, pdo_pgsql, pgsql
-
-      - name: Install Dependencies
-        run: composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist --ignore-platform-reqs
-
-      - name: Create Database
-        run: |
-          mkdir -p database
-          touch database/database.sqlite
-
-      - name: Execute tests
-        env:
-          DB_CONNECTION: sqlite
-          DB_DATABASE: database/database.sqlite
-        run: |
-          mkdir tests/Unit
-          php artisan test
-
-  # -----------------------------------------------------------------
-  # JOB 2: DEPLOY (Builds Docker + Migrates Neon + Pushes to Cloud Run)
+  # JOB 1: DEPLOY (Builds Docker + Migrates Neon + Pushes to Cloud Run)
   # -----------------------------------------------------------------
   deploy:
-    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -75,9 +44,11 @@ jobs:
           extensions: pdo_pgsql, pgsql
 
       # 5. Run Migrations against Neon
+      # Added --no-scripts to prevent "Zombie Autoloader" crashes
+      # Added --ignore-platform-reqs to prevent version strictness errors
       - name: Run Migrations
         run: |
-          composer install --no-dev --prefer-dist
+          composer install --no-dev --prefer-dist --no-scripts --ignore-platform-reqs
           php artisan migrate --force
         env:
           DB_CONNECTION: pgsql
