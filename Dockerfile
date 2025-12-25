@@ -27,6 +27,12 @@ WORKDIR /var/www/html
 # 6. Copy application code
 COPY . /var/www/html
 
+# Overwrite the default Apache configuration with our custom one
+COPY vhost.conf /etc/apache2/sites-available/000-default.conf
+
+# Enable Apache mod_rewrite (Required for Laravel routing)
+RUN a2enmod rewrite
+
 # 7. Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
