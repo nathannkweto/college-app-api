@@ -7,7 +7,7 @@ on:
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  REGION: us-central1  # <--- Change this if your Cloud Run region is different
+  REGION: us-east1
   SERVICE_NAME: college-app
 
 jobs:
