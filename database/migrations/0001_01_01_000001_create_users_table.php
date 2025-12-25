@@ -14,8 +14,7 @@ return new class extends Migration
         Schema::create('users', function (Blueprint $table) {
             $table->id();
             // We add our custom columns directly here:
-            $table->uuid('public_id')->unique(); // Our public UUID
-            $table->string('name');
+            $table->uuid('public_id')->default(DB::raw('gen_random_uuid()'));            $table->string('name');
             $table->string('email')->unique();
             $table->string('role')->index(); // Our Role column
             $table->timestamp('email_verified_at')->nullable();
