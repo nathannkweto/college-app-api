@@ -1,0 +1,31 @@
+openapi: 3.0.3
+info:
+  title: Core Auth API
+  version: 1.0.0
+paths:
+  /auth/login:
+    post:
+      summary: Unified Login
+      description: Accepts credentials, returns Token + Role.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        '200':
+          description: Login Successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  role:
+                    type: string
+                    enum: [ADMIN, STUDENT, LECTURER]
+                  # The public ID of their specific profile (Student ID or Staff ID)
+                  profile_public_id: { type: string, format: uuid }
