@@ -37,8 +37,9 @@ jobs:
         env:
           DB_CONNECTION: sqlite
           DB_DATABASE: database/database.sqlite
-        run: mkdir /tests/Unit
-        run: php artisan test
+        run: |
+          mkdir /tests/Unit
+          php artisan test
 
   # -----------------------------------------------------------------
   # JOB 2: DEPLOY (Builds Docker + Migrates Neon + Pushes to Cloud Run)
