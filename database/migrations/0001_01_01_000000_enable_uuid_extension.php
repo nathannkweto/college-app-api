@@ -11,8 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
-        DB::statement('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
-        DB::statement('CREATE EXTENSION IF NOT EXISTS "pgcrypto";');
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
+            DB::statement('CREATE EXTENSION IF NOT EXISTS "pgcrypto";');
+        }
     }
 
     /**
