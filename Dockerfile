@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
     zip \
     unzip \
     git \
-    curl
+    curl \
 
 # 2. Clear cache
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -19,7 +19,8 @@ RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 RUN docker-php-ext-install pdo_pgsql mbstring exif pcntl bcmath gd
 
 # 4. Enable Apache mod_rewrite
-RUN a2enmod rewrite
+RUN a2enmod rewrite headers
+
 
 # 5. Set working directory
 WORKDIR /var/www/html
@@ -30,8 +31,10 @@ COPY . /var/www/html
 # Overwrite the default Apache configuration with our custom one
 COPY vhost.conf /etc/apache2/sites-available/000-default.conf
 
-# Enable Apache mod_rewrite (Required for Laravel routing)
-RUN a2enmod rewrite
+# This must run AFTER the COPY commands
+RUN chown -R www-data:www-data /var/www/html \
+    && chmod -R 755 /var/www/html/storage \
+    && chmod -R 755 /var/www/html/bootstrap/cache
 
 # 7. Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer

@@ -2,11 +2,12 @@
 
 namespace App\Models;
 
+// ... other imports
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
-use Illuminate\Support\Str; // Required for UUID generation
+use Illuminate\Support\Str; // Import Str!
 
 class User extends Authenticatable
 {
@@ -14,58 +15,32 @@ class User extends Authenticatable
 
     /**
      * The attributes that are mass assignable.
+     *
+     * @var array<int, string>
      */
     protected $fillable = [
+        'public_id', // Make sure this is added!
         'name',
         'email',
         'password',
-        'role',              // Custom
-        'public_id',         // Custom
-        'profileable_id',    // Custom (Polymorphic)
-        'profileable_type',  // Custom (Polymorphic)
+        'role',
+        'profileable_id',
+        'profileable_type'
     ];
 
-    /**
-     * The attributes that should be hidden for serialization.
-     */
-    protected $hidden = [
-        'password',
-        'remember_token',
-        'id', // Hide internal ID, expose public_id instead
-    ];
+    // ... hidden and cast arrays ...
 
     /**
-     * Get the attributes that should be cast.
-     */
-    protected function casts(): array
-    {
-        return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed', // Automatically hashes passwords on save
-        ];
-    }
-
-    /**
-     * The "booted" method of the model.
-     * This replaces the database default value.
+     * AUTO-GENERATE UUID
      */
     protected static function boot()
     {
         parent::boot();
 
         static::creating(function ($model) {
-            // Automatically generate a UUID if one isn't provided
             if (empty($model->public_id)) {
                 $model->public_id = (string) Str::uuid();
             }
         });
-    }
-
-    /**
-     * Relationship to the specific profile (Student, Lecturer, etc.)
-     */
-    public function profile()
-    {
-        return $this->morphTo('profileable');
     }
 }
