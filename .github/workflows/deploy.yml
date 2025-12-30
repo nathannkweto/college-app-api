@@ -63,7 +63,7 @@ jobs:
         uses: 'google-github-actions/deploy-cloudrun@v2'
         with:
           service: ${{ env.SERVICE_NAME }}
-          image: gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          image: gcr.io/${{ env.GCP_PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
           region: ${{ env.REGION }}
           flags: '--allow-unauthenticated'
           env_vars: |
@@ -76,3 +76,19 @@ jobs:
             DB_DATABASE=${{ secrets.DB_DATABASE }}
             DB_USERNAME=${{ secrets.DB_USERNAME }}
             DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+
+      # 7. Update or Create the Cloud Run Job
+      # Using 'deploy' command handles both create and update automatically
+      - name: 'Update Cloud Run Job'
+        run: |-
+          gcloud run jobs deploy tinker-maintenance \
+            --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+            --region ${{ env.REGION }} \
+            --set-env-vars="DB_CONNECTION=pgsql,DB_HOST=${{ secrets.DB_HOST }},DB_DATABASE=${{ secrets.DB_DATABASE }},DB_USERNAME=${{ secrets.DB_USERNAME }},DB_PASSWORD=${{ secrets.DB_PASSWORD }}" \
+            --command="php" \
+            --args="artisan,tinker,scripts/seed.php"
+
+      # 8. Execute the Job (Optional: Only if you want it to run on every deploy)
+      - name: 'Execute Cloud Run Job'
+        run: |-
+          gcloud run jobs execute tinker-maintenance --region ${{ env.REGION }} --wait
