@@ -4,7 +4,7 @@ return [
     /*
     | The 'paths' must match the URL pattern of your API.
     */
-    'paths' => ['api/*', 'sanctum/csrf-cookie'],
+    'paths' => ['api/*'],
 
     'allowed_methods' => ['*'],
 
