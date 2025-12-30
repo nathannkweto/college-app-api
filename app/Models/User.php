@@ -2,16 +2,16 @@
 
 namespace App\Models;
 
-// ... other imports
+use App\Traits\HasPublicId;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
-use Illuminate\Support\Str; // Import Str!
+use Illuminate\Support\Str;
 
 class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable, HasPublicId;
 
     /**
      * The attributes that are mass assignable.
@@ -28,19 +28,22 @@ class User extends Authenticatable
         'profileable_type'
     ];
 
-    // ... hidden and cast arrays ...
-
     /**
-     * AUTO-GENERATE UUID
+     * Get Specific Profile
      */
-    protected static function boot()
+    public function profile()
     {
-        parent::boot();
+        $role = strtoupper($this->role ?? '');
 
-        static::creating(function ($model) {
-            if (empty($model->public_id)) {
-                $model->public_id = (string) Str::uuid();
-            }
-        });
+        if ($role === 'STUDENT') {
+            return $this->hasOne(Student::class, 'user_id');
+        } elseif ($role === 'LECTURER') {
+            return $this->hasOne(Lecturer::class, 'user_id');
+        } elseif ($role === 'ADMIN') {
+            return $this->hasOne(Admin::class, 'user_id');
+        }
+
+        return $this->hasOne(Student::class, 'user_id')->whereRaw('1 = 0');
     }
+
 }

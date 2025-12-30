@@ -2,23 +2,21 @@
 
 namespace App\Models;
 
+use App\Traits\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 
 class ExamSeason extends Model
 {
+    use HasPublicId;
     protected $guarded = ['id'];
 
-    protected $casts = [
-        'is_active' => 'boolean',
-    ];
+    protected $fillable = ['name', 'semester_id'];
 
-    public function semester()
-    {
+    public function semester() {
         return $this->belongsTo(Semester::class);
     }
 
-    public function schedules()
-    {
-        return $this->hasMany(ExamSchedule::class);
+    public function papers() {
+        return $this->hasMany(ExamPaper::class);
     }
 }

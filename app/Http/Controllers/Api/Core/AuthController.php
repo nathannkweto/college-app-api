@@ -28,8 +28,9 @@ class AuthController extends Controller
         // 4. Create Token
         $token = $user->createToken('auth_token', [$user->role])->plainTextToken;
 
-        // 5. Get Profile ID (fallback to User Public ID if no profile linked yet)
-        $profileId = $user->profileable ? $user->profileable->public_id : $user->public_id;
+        // 5. Get Profile ID
+        $profile = $user->profile;
+        $profileId = $user->profile ? $profile->public_id : $user->public_id;
 
         // 6. Return JSON matching core-api.yaml
         return response()->json([
@@ -37,5 +38,16 @@ class AuthController extends Controller
             'role' => $user->role,
             'profile_public_id' => $profileId,
         ], 200);
+    }
+    /**
+     * Logout User (Revoke Token).
+     * Requires: Bearer Token in Header
+     */
+    public function logout(Request $request)
+    {
+        // Delete the token that was used to authenticate this request
+        $request->user()->currentAccessToken()->delete();
+
+        return response()->json(['message' => 'Logged out successfully.']);
     }
 }

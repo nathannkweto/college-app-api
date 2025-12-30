@@ -3,79 +3,100 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\TimetableEntry;
 use App\Models\Course;
 use App\Models\Lecturer;
-use App\Models\StudentGroup;
+use App\Models\Semester;
+use App\Models\TimetableEntry;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 
 class TimetableController extends Controller
 {
+    /**
+     * Get the master timetable for the active semester.
+     */
+    public function index()
+    {
+        $activeSemester = Semester::active();
+
+        if (!$activeSemester) {
+            return response()->json(['data' => []]); // Return empty if no semester
+        }
+
+        $entries = TimetableEntry::with(['course', 'lecturer'])
+            ->where('semester_id', $activeSemester->id)
+            ->orderBy('day')
+            ->orderBy('start_time')
+            ->get()
+            ->groupBy('day');
+
+        return response()->json([
+            'semester' => $activeSemester->academic_year,
+            'timetable' => $entries
+        ]);
+    }
+
+    /**
+     * Create a new timetable entry.
+     */
     public function store(Request $request)
     {
-        $validated = $request->validate([
-            'day' => 'required|in:MON,TUE,WED,THU,FRI,SAT',
-            'start_time' => 'required|date_format:H:i',
-            'end_time' => 'required|date_format:H:i|after:start_time',
+        $request->validate([
             'course_public_id' => 'required|exists:courses,public_id',
             'lecturer_public_id' => 'required|exists:lecturers,public_id',
-            'location' => 'required|string',
-            'group_letter' => 'required|string', // A, B, C
+            'day' => 'required|string|in:Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday',
+            'start_time' => 'required|date_format:H:i', // 09:00
+            'end_time' => 'required|date_format:H:i|after:start_time',
+            'location' => 'required|string', // Room number
         ]);
 
-        // Resolve IDs
-        $courseId = Course::getIdFromPublicId($validated['course_public_id']);
-        $lecturerId = Lecturer::getIdFromPublicId($validated['lecturer_public_id']);
-
-        // Find or Create the Student Group (e.g. CS101 Group A)
-        // Note: Logic simplifies assuming we attach group to Program.
-        // For now, we fetch the course's department/program link or pass program_id in request.
-        // To keep it simple, let's assume we pass program_public_id or resolve it from course context.
-        // (Skipping deep group logic for brevity, using simple lookup)
-
-        // --- COLLISION DETECTION ---
-
-        // 1. Check Room Availability
-        $roomClash = TimetableEntry::where('day', $validated['day'])
-            ->where('location', $validated['location'])
-            ->where(function ($query) use ($validated) {
-                $query->whereBetween('start_time', [$validated['start_time'], $validated['end_time']])
-                    ->orWhereBetween('end_time', [$validated['start_time'], $validated['end_time']]);
-            })->exists();
-
-        if ($roomClash) {
-            throw ValidationException::withMessages([
-                'location' => ['This room is already booked for this time slot.']
-            ]);
+        $activeSemester = Semester::active();
+        if (!$activeSemester) {
+            return response()->json(['message' => 'Cannot create timetable without an active semester.'], 400);
         }
 
-        // 2. Check Lecturer Availability
-        $lecturerClash = TimetableEntry::where('day', $validated['day'])
-            ->where('lecturer_id', $lecturerId)
-            ->where(function ($query) use ($validated) {
-                $query->whereBetween('start_time', [$validated['start_time'], $validated['end_time']])
-                    ->orWhereBetween('end_time', [$validated['start_time'], $validated['end_time']]);
-            })->exists();
+        // Resolve UUIDs
+        $course = Course::where('public_id', $request->course_public_id)->first();
+        $lecturer = Lecturer::where('public_id', $request->lecturer_public_id)->first();
 
-        if ($lecturerClash) {
-            throw ValidationException::withMessages([
-                'lecturer' => ['This lecturer is already teaching another class at this time.']
-            ]);
+        // --- CONFLICT CHECKS ---
+
+        // 1. Check if Lecturer is busy
+        if ($this->hasConflict($activeSemester->id, 'lecturer_id', $lecturer->id, $request)) {
+            return response()->json(['message' => 'Lecturer is already teaching another class at this time.'], 409);
         }
 
-        // --- SAVE ---
+        // 2. Check if Room (Location) is occupied
+        if ($this->hasConflict($activeSemester->id, 'location', $request->location, $request)) {
+            return response()->json(['message' => 'Room is already booked at this time.'], 409);
+        }
 
-        TimetableEntry::create([
-            'day' => $validated['day'],
-            'start_time' => $validated['start_time'],
-            'end_time' => $validated['end_time'],
-            'course_id' => $courseId,
-            'lecturer_id' => $lecturerId,
-            'location' => $validated['location'],
-            'student_group_id' => 1 // Placeholder: You'd resolve the Group ID here
+        // Create Entry
+        $entry = TimetableEntry::create([
+            'semester_id' => $activeSemester->id,
+            'course_id' => $course->id,
+            'lecturer_id' => $lecturer->id,
+            'day' => $request->day,
+            'start_time' => $request->start_time,
+            'end_time' => $request->end_time,
+            'location' => $request->location,
         ]);
 
-        return response()->json(['message' => 'Class scheduled successfully'], 201);
+        return response()->json(['message' => 'Timetable entry created', 'data' => $entry], 201);
+    }
+
+    /**
+     * Helper to check for time overlaps.
+     * Logic: (StartA < EndB) and (EndA > StartB) indicates overlap.
+     */
+    private function hasConflict($semesterId, $field, $value, $request)
+    {
+        return TimetableEntry::where('semester_id', $semesterId)
+            ->where('day', $request->day)
+            ->where($field, $value)
+            ->where(function ($query) use ($request) {
+                $query->where('start_time', '<', $request->end_time)
+                    ->where('end_time', '>', $request->start_time);
+            })
+            ->exists();
     }
 }

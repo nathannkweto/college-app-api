@@ -18,15 +18,11 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('users', function (Blueprint $table) {
-            $table->id(); // Internal Auto-Increment ID
-
+            $table->id();
+            $table->uuid('public_id')->unique();
             $table->string('name');
             $table->string('email')->unique();
 
-            // CUSTOM FIELDS
-            // -----------------------------------------------------
-            // We do NOT set a default here. The User Model handles it.
-            $table->uuid('public_id')->unique();
 
             // Role for authorization (admin, student, lecturer)
             $table->string('role')->default('student')->index();
@@ -34,7 +30,6 @@ return new class extends Migration
             // Polymorphic relations (links to Student/Lecturer profile tables)
             $table->uuid('profileable_id')->nullable();
             $table->string('profileable_type')->nullable();
-            // -----------------------------------------------------
 
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');

@@ -1,15 +1,8 @@
 openapi: 3.0.3
 info:
   title: College Admin System API
-  description: >
-    Full administrative control panel for the College Management System.
-
-    **Key Conventions:**
-    - All IDs in paths and bodies are **UUIDs (`public_id`)**.
-    - Dates are `YYYY-MM-DD`.
-    - Times are `HH:mm`.
-    - Authentication is via Bearer Token (Sanctum).
-  version: 2.0.0
+  description: Full administrative control panel for the College Management System.
+  version: 1.0.0
   contact:
     name: Backend Team
 
@@ -27,135 +20,445 @@ components:
       bearerFormat: JWT
 
   schemas:
-    # --- SHARED & UTILS ---
+
     PaginationMeta:
       type: object
       properties:
-        current_page: { type: integer }
-        last_page: { type: integer }
-        total: { type: integer }
-        per_page: { type: integer }
+        current_page:
+          type: integer
+        last_page:
+          type: integer
+        total:
+          type: integer
+        per_page:
+          type: integer
 
-    # --- ACADEMIC STRUCTURE ---
+    DashboardMetrics:
+      type: object
+      required:
+        - students
+        - lecturers
+        - programs
+        - levels
+      properties:
+        students:
+          type: integer
+        lecturers:
+          type: integer
+        programs:
+          type: integer
+        levels:
+          type: integer
+
+    DashboardFinance:
+      type: object
+      required:
+        - income
+        - expenses
+        - net_balance
+      properties:
+        income:
+          type: number
+          format: double
+        expenses:
+          type: number
+          format: double
+        net_balance:
+          type: number
+          format: double
+        active_semester:
+          type: string
+          nullable: true
+
     Department:
       type: object
       properties:
-        public_id: { type: string, format: uuid }
-        name: { type: string, example: "Computer Science" }
-        code: { type: string, example: "CS" }
+        public_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        code:
+          type: string
 
     Qualification:
       type: object
       properties:
-        public_id: { type: string, format: uuid }
-        name: { type: string, example: "Bachelor of Science" }
-        code: { type: string, example: "BSC" }
+        public_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        code:
+          type: string
 
     Program:
       type: object
       properties:
-        public_id: { type: string, format: uuid }
-        name: { type: string, example: "B.Sc Computer Science" }
-        code: { type: string, example: "CS101" }
-        total_semesters: { type: integer, example: 8 }
-        qualification: { $ref: '#/components/schemas/Qualification' }
-        department: { $ref: '#/components/schemas/Department' }
+        public_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        code:
+          type: string
+        total_semesters:
+          type: integer
+        qualification:
+          $ref: "#/components/schemas/Qualification"
+        department:
+          $ref: "#/components/schemas/Department"
 
     Course:
       type: object
       properties:
-        public_id: { type: string, format: uuid }
-        name: { type: string, example: "Data Structures" }
-        code: { type: string, example: "CS202" }
-        department_public_id: { type: string, format: uuid }
+        public_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        code:
+          type: string
+        department:
+          $ref: "#/components/schemas/Department"
+
+    ProgramCourse:
+      type: object
+      required:
+        - name
+        - code
+        - pivot
+      properties:
+        public_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        code:
+          type: string
+        department:
+          $ref: "#/components/schemas/Department"
+        pivot:
+          type: object
+          properties:
+            semester_sequence:
+              type: integer
 
     Semester:
       type: object
       properties:
-        public_id: { type: string, format: uuid }
-        academic_year: { type: string, example: "2024/25" }
-        semester_number: { type: integer, enum: [1, 2] }
-        is_active: { type: boolean }
+        public_id:
+          type: string
+          format: uuid
+        academic_year:
+          type: string
+        semester_number:
+          type: integer
+          enum: [1, 2]
+        is_active:
+          type: boolean
+        start_date:
+          type: string
+          format: date
+        length_weeks:
+          type: integer
 
-    # --- PEOPLE ---
+    TimetableEntry:
+      type: object
+      properties:
+        public_id:
+          type: string
+          format: uuid
+        day:
+          type: string
+        start_time:
+          type: string
+          format: time
+        end_time:
+          type: string
+          format: time
+        course:
+          $ref: "#/components/schemas/Course"
+        lecturer:
+          $ref: "#/components/schemas/Lecturer"
+        location:
+          type: string
+
+    CourseResult:
+      type: object
+      properties:
+        course_name:
+          type: string
+        course_code:
+          type: string
+        ca_score:
+          type: number
+          format: float
+        exam_score:
+          type: number
+          format: float
+        total_score:
+          type: number
+          format: float
+        grade:
+          type: string
+        status:
+          type: string
+          enum: [PASS, FAIL, SUPPLIMENTARY]
+
+    StudentTranscript:
+      type: object
+      properties:
+        student:
+          $ref: "#/components/schemas/Student"
+        semester_gpa:
+          type: number
+          format: float
+        academic_standing:
+          type: string
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/CourseResult"
+
+    StudentResultSummary:
+      type: object
+      properties:
+        student_public_id:
+          type: string
+          format: uuid
+        student_id:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        courses_failed:
+          type: integer
+        average_score:
+          type: number
+          format: float
+        semester_decision:
+          type: string
+          enum: [PROMOTED, REPEAT, DISMISSED]
+
     Student:
       type: object
       properties:
-        public_id: { type: string, format: uuid }
-        student_id: { type: string, example: "25BSC001", description: "Auto-generated System ID" }
-        first_name: { type: string }
-        last_name: { type: string }
-        email: { type: string, format: email }
-        program: { $ref: '#/components/schemas/Program' }
-        current_year: { type: integer, example: 1 }
-        status: { type: string, enum: [active, inactive, graduated] }
+        public_id:
+          type: string
+          format: uuid
+        student_id:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        email:
+          type: string
+          format: email
+        enrollment_date:
+          type: string
+          format: date
+        national_id:
+          type: string
+        gender:
+          type: string
+          enum: [M, F]
+        program:
+          $ref: "#/components/schemas/Program"
+        current_semester_sequence:
+          type: integer
+        status:
+          type: string
+          enum: [active, inactive, graduated, suspended]
+        dob:
+          type: string
+          format: date
+        address:
+          type: string
+        phone:
+          type: string
 
     Lecturer:
       type: object
       properties:
-        public_id: { type: string, format: uuid }
-        lecturer_id: { type: string, example: "CS-2501" }
-        first_name: { type: string }
-        last_name: { type: string }
-        title: { type: string, example: "Dr." }
-        department: { $ref: '#/components/schemas/Department' }
-        status: { type: string, enum: [active, inactive] }
+        public_id:
+          type: string
+          format: uuid
+        lecturer_id:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        email:
+          type: string
+          format: email
+        title:
+          type: string
+          enum: [Mr, Ms, Mrs, Dr, Prof]
+        gender:
+          type: string
+          enum: [M, F]
+        department:
+          $ref: "#/components/schemas/Department"
+        national_id:
+          type: string
+        dob:
+          type: string
+          format: date
+        address:
+          type: string
+        phone:
+          type: string
 
-    # --- LOGISTICS ---
-    TimetableEntry:
+    ExamPaper:
       type: object
       properties:
-        id: { type: integer }
-        day: { type: string, enum: [MON, TUE, WED, THU, FRI, SAT, SUN] }
-        start_time: { type: string, format: time, example: "09:00" }
-        end_time: { type: string, format: time, example: "11:00" }
-        location: { type: string, example: "Room 304" }
-        course: { $ref: '#/components/schemas/Course' }
-        lecturer_name: { type: string }
-        group: { type: string, example: "Group A" }
+        public_id:
+          type: string
+          format: uuid
+        exam_season_public_id:
+          type: string
+          format: uuid
+        course_public_id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+        start_time:
+          type: string
+          format: time
+        duration_minutes:
+          type: integer
+        location:
+          type: string
+
+    FinanceFee:
+      type: object
+      properties:
+        public_id:
+          type: string
+          format: uuid
+        student:
+          $ref: "#/components/schemas/Student"
+        title:
+          type: string
+        total_amount:
+          type: number
+          format: double
+        balance:
+          type: number
+          format: double
+        status:
+          type: string
+          enum: [pending, partial, cleared]
+        due_date:
+          type: string
+          format: date
+          nullable: true
+
+    FinanceTransaction:
+      type: object
+      properties:
+        public_id:
+          type: string
+          format: uuid
+        transaction_id:
+          type: string
+        type:
+          type: string
+          enum: [income, expense]
+        title:
+          type: string
+        amount:
+          type: number
+          format: double
+        date:
+          type: string
+          format: date
+        fee_public_id:
+          type: string
+          format: uuid
+          nullable: true
+        note:
+          type: string
+          nullable: true
+
 
 security:
   - bearerAuth: []
 
 paths:
-  # ==========================
-  # DASHBOARD
-  # ==========================
-  /dashboard/summary:
+  # --- DASHBOARD ---
+  /dashboard/metrics:
     get:
       tags: [Dashboard]
-      summary: Get high-level system stats
+      summary: Get core KPI counts
+      operationId: dashboardMetricsGet
       responses:
-        '200':
+        "200":
+          description: OK
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      properties:
+                        {
+                          data:
+                            { $ref: "#/components/schemas/DashboardMetrics" },
+                        },
+                    },
+                },
+            }
+
+  /dashboard/finance:
+    get:
+      tags: [Dashboard]
+      summary: Get financial overview
+      operationId: dashboardFinanceGet
+      responses:
+        "200":
+          description: OK
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      properties:
+                        {
+                          data:
+                            { $ref: "#/components/schemas/DashboardFinance" },
+                        },
+                    },
+                },
+            }
+
+  # --- ACADEMICS ---
+  /departments:
+    get:
+      tags: [Academics]
+      operationId: departmentsGet
+      responses:
+        "200":
           description: OK
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  students_count: { type: integer }
-                  lecturers_count: { type: integer }
-                  active_semester: { type: string, nullable: true }
-                  daily_income: { type: number }
-
-  # ==========================
-  # ACADEMICS - DEPARTMENTS
-  # ==========================
-  /departments:
-    get:
-      tags: [Academics]
-      summary: List all departments
-      responses:
-        '200':
-          description: List retrieved
-          content:
-            application/json:
-              schema:
                 type: array
-                items: { $ref: '#/components/schemas/Department' }
+                items:
+                  $ref: "#/components/schemas/Department"
+
     post:
       tags: [Academics]
-      summary: Create a new department
+      operationId: departmentsPost
       requestBody:
         required: true
         content:
@@ -164,344 +467,831 @@ paths:
               type: object
               required: [name, code]
               properties:
-                name: { type: string }
-                code: { type: string, maxLength: 5 }
+                name:
+                  type: string
+                code:
+                  type: string
       responses:
-        '201':
+        "201":
           description: Created
 
-  # ==========================
-  # ACADEMICS - PROGRAMS
-  # ==========================
-  /programs:
+  /qualifications:
     get:
       tags: [Academics]
-      summary: List programs
+      operationId: qualificationsGet
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  data: { type: array, items: { $ref: '#/components/schemas/Program' } }
-                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Qualification"
+
     post:
       tags: [Academics]
-      summary: Create a degree program
+      operationId: qualificationsPost
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [name, code, qualification_public_id, department_public_id, total_semesters]
+              required: [name, code]
               properties:
-                name: { type: string }
-                code: { type: string }
-                qualification_public_id: { type: string, format: uuid }
-                department_public_id: { type: string, format: uuid }
-                total_semesters: { type: integer }
+                name:
+                  type: string
+                code:
+                  type: string
       responses:
-        '201':
+        "201":
+          description: Created
+
+  /programs:
+    get:
+      tags: [Academics]
+      operationId: programsGet
+      parameters:
+        - name: qualification_public_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: department_public_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Program"
+
+    post:
+      tags: [Academics]
+      operationId: programsPost
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - code
+                - qualification_public_id
+                - department_public_id
+                - total_semesters
+              properties:
+                name:
+                  type: string
+                code:
+                  type: string
+                qualification_public_id:
+                  type: string
+                  format: uuid
+                department_public_id:
+                  type: string
+                  format: uuid
+                total_semesters:
+                  type: integer
+      responses:
+        "201":
           description: Created
 
   /programs/{public_id}/courses:
-    post:
+    get:
       tags: [Academics]
-      summary: Link a course to a program structure (curriculum)
+      operationId: programsCoursesGet
       parameters:
         - name: public_id
           in: path
           required: true
-          schema: { type: string, format: uuid }
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProgramCourse"
+
+    post:
+      tags: [Academics]
+      operationId: programsCoursesPost
+      parameters:
+        - name: public_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               required: [course_public_id, semester_sequence]
               properties:
-                course_public_id: { type: string, format: uuid }
-                semester_sequence: { type: integer, description: "Which semester is this taught? (1-8)" }
+                course_public_id:
+                  type: string
+                  format: uuid
+                semester_sequence:
+                  type: integer
       responses:
-        '200':
-          description: Course linked
+        "200":
+          description: Linked
 
-  # ==========================
-  # ACADEMICS - COURSES
-  # ==========================
+  /programs/{public_id}/courses/{course_public_id}:
+    delete:
+      tags: [Academics]
+      operationId: programsCoursesDelete
+      parameters:
+        - name: public_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: course_public_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Removed
+
+
   /courses:
     get:
       tags: [Academics]
-      parameters:
-        - name: department_public_id
-          in: query
-          schema: { type: string, format: uuid }
+      operationId: coursesGet
       responses:
-        '200':
-          description: List courses
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Course"
+
     post:
       tags: [Academics]
+      operationId: coursesPost
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               required: [name, code, department_public_id]
               properties:
-                name: { type: string }
-                code: { type: string }
-                department_public_id: { type: string, format: uuid }
+                name:
+                  type: string
+                code:
+                  type: string
+                department_public_id:
+                  type: string
+                  format: uuid
       responses:
-        '201':
+        "201":
           description: Created
 
-  # ==========================
-  # USER MANAGEMENT - STUDENTS
-  # ==========================
+  # --- STUDENTS ---
   /students:
     get:
       tags: [Students]
-      summary: List students with filters
+      operationId: studentsGet
       parameters:
         - name: program_public_id
           in: query
-          schema: { type: string, format: uuid }
+          schema:
+            type: string
+            format: uuid
         - name: search
           in: query
-          schema: { type: string, description: "Name or Student ID" }
-        - name: page
-          in: query
-          schema: { type: integer }
+          schema:
+            type: string
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  data: { type: array, items: { $ref: '#/components/schemas/Student' } }
-                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Student"
 
     post:
       tags: [Students]
-      summary: Register a single student
-      description: "Auto-generates User account and Student ID (e.g. 25BSC001)"
+      operationId: studentsPost
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [first_name, last_name, email, program_public_id, gender, national_id, enrollment_date]
+              required:
+                - first_name
+                - last_name
+                - email
+                - program_public_id
+                - gender
+                - enrollment_date
+                - national_id
+                - dob
+                - address
+                - phone
               properties:
-                first_name: { type: string }
-                last_name: { type: string }
-                email: { type: string, format: email }
-                program_public_id: { type: string, format: uuid }
-                gender: { type: string, enum: [M, F] }
-                national_id: { type: string }
-                enrollment_date: { type: string, format: date }
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                program_public_id:
+                  type: string
+                  format: uuid
+                gender:
+                  type: string
+                  enum: [M, F]
+                enrollment_date:
+                  type: string
+                  format: date
+                national_id:
+                  type: string
+                dob:
+                  type: string
+                  format: date
+                address:
+                  type: string
+                phone:
+                  type: string
       responses:
-        '201':
+        "201":
           description: Created
 
   /students/batch-upload:
     post:
       tags: [Students]
-      summary: Upload CSV for bulk registration
+      operationId: studentsBatchUploadPost
+      summary: Upload CSV
       requestBody:
+        required: true
         content:
           multipart/form-data:
             schema:
               type: object
+              required: [file]
               properties:
-                file: { type: string, format: binary }
+                file:
+                  type: string
+                  format: binary
       responses:
-        '200':
-          description: Job queued. Check email for results.
+        "200":
+          description: Queued
 
-  # ==========================
-  # USER MANAGEMENT - LECTURERS
-  # ==========================
-  /lecturers:
-    get:
-      tags: [Lecturers]
-      parameters:
-        - name: department_public_id
-          in: query
-          schema: { type: string, format: uuid }
-      responses: { '200': { description: OK } }
-
+  /students/promotion-preview:
     post:
-      tags: [Lecturers]
+      tags: [Students]
+      operationId: studentsPromotionPreview
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  eligible:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Student"
+                  repeating:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Student"
+
+  /students/promote:
+    post:
+      tags: [Students]
+      operationId: studentsPromotePost
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [first_name, last_name, email, department_public_id, title, qualification, employment_date]
               properties:
-                first_name: { type: string }
-                last_name: { type: string }
-                email: { type: string, format: email }
-                department_public_id: { type: string, format: uuid }
-                title: { type: string, enum: [Mr, Ms, Mrs, Dr, Prof] }
-                qualification: { type: string }
-                national_id: { type: string }
-                employment_date: { type: string, format: date }
+                exclude_student_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
       responses:
-        '201':
+        "200":
+          description: Job started
+
+  # --- LECTURERS ---
+  /lecturers:
+    get:
+      tags: [Lecturers]
+      operationId: lecturersGet
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Lecturer"
+
+    post:
+      tags: [Lecturers]
+      operationId: lecturersPost
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - first_name
+                - last_name
+                - email
+                - department_public_id
+                - title
+                - gender
+              properties:
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                department_public_id:
+                  type: string
+                  format: uuid
+                title:
+                  type: string
+                  enum: [Mr, Ms, Mrs, Dr, Prof]
+                gender:
+                  type: string
+                  enum: [M, F]
+                national_id:
+                  type: string
+                dob:
+                  type: string
+                  format: date
+                address:
+                  type: string
+                phone:
+                  type: string
+      responses:
+        "201":
           description: Created
 
-  # ==========================
-  # LOGISTICS - TIMETABLES
-  # ==========================
+  /lecturers/batch-upload:
+    post:
+      tags: [Lecturers]
+      operationId: lecturersBatchUploadPost
+      summary: Upload CSV
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Queued
+
+
+  # --- LOGISTICS ---
   /semesters:
     get:
-      tags: [Timetables]
-      summary: List semesters
-      responses: { '200': { description: OK } }
+      tags: [ Timetables ]
+      operationId: semestersGet
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Semester"
+
     post:
-      tags: [Timetables]
-      summary: Initialize a new semester
+      tags: [ Timetables ]
+      operationId: semestersPost
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
+              required:
+                - academic_year
+                - semester_number
+                - length_weeks
+                - start_date
               properties:
-                academic_year: { type: string, example: "2025/26" }
-                semester_number: { type: integer, enum: [1, 2] }
-      responses: { '201': { description: Created } }
+                academic_year:
+                  type: string
+                semester_number:
+                  type: integer
+                start_date:
+                  type: string
+                  format: date
+                length_weeks:
+                  type: integer
+      responses:
+        "201":
+          description: Created
 
-  /semesters/{public_id}/timetable:
+  /semesters/active:
+    get:
+      tags: [ Timetables ]
+      operationId: semestersActiveGet
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Semester"
+        "404":
+          description: None active
+
+  /semesters/{public_id}/end:
     post:
-      tags: [Timetables]
-      summary: Add a class to the schedule
+      tags: [ Timetables ]
+      operationId: semesterEndPost
       parameters:
         - name: public_id
           in: path
-          schema: { type: string, format: uuid }
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Ended
+
+  /logistics/timetable:
+    get:
+      tags: [ Timetables ]
+      operationId: logisticsTimetableGet
+      parameters:
+        - name: semester_public_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: program_public_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TimetableEntry"
+
+    post:
+      tags: [ Timetables ]
+      operationId: logisticsTimetablePost
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
-              required: [day, start_time, end_time, course_public_id, lecturer_public_id, location, group_letter]
+              required:
+                - semester_public_id
+                - program_public_id
+                - course_public_id
+                - day
+                - start_time
+                - end_time
               properties:
-                day: { type: string, enum: [MON, TUE, WED, THU, FRI] }
-                start_time: { type: string, format: time }
-                end_time: { type: string, format: time }
-                course_public_id: { type: string, format: uuid }
-                lecturer_public_id: { type: string, format: uuid }
-                location: { type: string }
-                group_letter: { type: string, description: "A, B, or C" }
+                semester_public_id:
+                  type: string
+                  format: uuid
+                program_public_id:
+                  type: string
+                  format: uuid
+                course_public_id:
+                  type: string
+                  format: uuid
+                lecturer_public_id:
+                  type: string
+                  format: uuid
+                day:
+                  type: string
+                start_time:
+                  type: string
+                  format: time
+                end_time:
+                  type: string
+                  format: time
+                location:
+                  type: string
       responses:
-        '201':
-          description: Entry added
-        '409':
-          description: Conflict detected (Room or Lecturer busy)
+        "201":
+          description: Created
 
-  # ==========================
-  # EXAMS
-  # ==========================
+  # --- EXAMS ---
   /exams/seasons:
     post:
-      tags: [Exams]
-      summary: Create Exam Season (e.g. May Finals)
+      tags: [ Exams ]
+      operationId: examSeasonsPost
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
+              required: [ name, semester_public_id ]
               properties:
-                name: { type: string }
-                semester_public_id: { type: string, format: uuid }
-      responses: { '201': { description: Created } }
-
-  /exams/seasons/{public_id}/generate-numbers:
-    post:
-      tags: [Exams]
-      summary: Trigger job to generate anon exam IDs for all students
-      parameters:
-        - name: public_id
-          in: path
-          schema: { type: string, format: uuid }
+                name:
+                  type: string
+                semester_public_id:
+                  type: string
+                  format: uuid
       responses:
-        '202':
-          description: Generation started
+        "201":
+          description: Created
 
   /exams/schedules:
     post:
-      tags: [Exams]
-      summary: Schedule a specific paper
+      tags: [ Exams ]
+      operationId: examSchedulesPost
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                exam_season_public_id: { type: string, format: uuid }
-                course_public_id: { type: string, format: uuid }
-                date: { type: string, format: date }
-                start_time: { type: string, format: time }
-                duration_minutes: { type: integer }
-                location: { type: string }
-                # Exam Grouping Logic
-                exam_number_start: { type: string, description: "Start of ID range in this room" }
-                exam_number_end: { type: string, description: "End of ID range in this room" }
-      responses: { '201': { description: Created } }
-
-  # ==========================
-  # FINANCE
-  # ==========================
-  /finance/fees:
-    post:
-      tags: [Finance]
-      summary: Apply a fee to students
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [title, amount, target_type]
-              properties:
-                title: { type: string, example: "Tuition Term 1" }
-                amount: { type: number }
-                target_type: { type: string, enum: [ALL, PROGRAM, STUDENT] }
-                target_public_id: { type: string, format: uuid, nullable: true }
+              $ref: "#/components/schemas/ExamPaper"
       responses:
-        '201':
-          description: Fees applied to ledgers
+        "201":
+          description: Created
+
+  # --- FINANCE ---
+  /finance/fees:
+    get:
+      tags: [ Finance ]
+      operationId: financeFeesGet
+      parameters:
+        - name: student_public_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ pending, partial, cleared ]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FinanceFee"
+
+    post:
+      tags: [ Finance ]
+      operationId: financeFeesPost
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ title, amount, target_type ]
+              properties:
+                title:
+                  type: string
+                amount:
+                  type: number
+                target_type:
+                  type: string
+                  enum: [ ALL, PROGRAM, STUDENT ]
+                target_public_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                due_date:
+                  type: string
+                  format: date
+      responses:
+        "201":
+          description: Created
 
   /finance/transactions:
     get:
-      tags: [Finance]
-      summary: List transaction history
-      responses: { '200': { description: OK } }
+      tags: [ Finance ]
+      operationId: financeTransactionsGet
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FinanceTransaction"
 
     post:
-      tags: [Finance]
-      summary: Record a manual payment (Bank Transfer/Cash)
+      tags: [ Finance ]
+      operationId: financeTransactionsPost
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
-              required: [student_public_id, amount, type, date, transaction_id]
+              required: [ title, amount, type, date, transaction_id ]
               properties:
-                student_public_id: { type: string, format: uuid }
-                amount: { type: number }
-                type: { type: string, enum: [income, expense] }
-                is_fee_payment: { type: boolean }
-                date: { type: string, format: date }
-                transaction_id: { type: string, description: "Bank Ref / Receipt Number" }
-                note: { type: string }
+                title:
+                  type: string
+                amount:
+                  type: number
+                type:
+                  type: string
+                  enum: [ income, expense ]
+                date:
+                  type: string
+                  format: date
+                transaction_id:
+                  type: string
+                fee_public_id:
+                  type: string
+                  format: uuid
+                note:
+                  type: string
       responses:
-        '201':
-          description: Transaction recorded
+        "201":
+          description: Recorded
+
+  /finance/students/{student_id}/fees:
+    get:
+      tags: [ Finance ]
+      operationId: financeStudentFeesGet
+      parameters:
+        - name: student_id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Supports UUID or Human Readable ID
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FinanceFee"
+
+  # --- RESULTS & PUBLISHING ---
+  /results/program-summary:
+    get:
+      tags: [ Results ]
+      summary: Get list of students in a program with result summaries
+      operationId: resultsProgramSummaryGet
+      parameters:
+        - name: program_public_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: semester_public_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  is_published:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StudentResultSummary"
+
+  /results/student-transcript:
+    get:
+      tags: [ Results ]
+      summary: Get detailed course breakdown for a specific student
+      operationId: resultsStudentTranscriptGet
+      parameters:
+        - name: student_public_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: semester_public_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentTranscript"
+
+  /results/publish:
+    post:
+      tags: [ Results ]
+      summary: Publish results for a specific program and semester
+      operationId: resultsPublishPost
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ program_public_id, semester_public_id, action ]
+              properties:
+                program_public_id:
+                  type: string
+                  format: uuid
+                semester_public_id:
+                  type: string
+                  format: uuid
+                action:
+                  type: string
+                  enum: [ PUBLISH, UNPUBLISH ]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  status:
+                    type: string
+

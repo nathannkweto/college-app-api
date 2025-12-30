@@ -11,46 +11,63 @@ class Student extends Model
 
     protected $guarded = ['id'];
 
-    // Auto-generate the Student ID (e.g., 25BSC032) on creation
-    protected static function boot()
-    {
-        parent::boot();
 
-        static::creating(function ($student) {
-            if (empty($student->student_id)) {
-                // 1. Get Year (25)
-                $year = date('y');
 
-                // 2. Get Qualification Code (e.g., BSC)
-                // We need to fetch the program -> qualification relationship
-                $program = Program::with('qualification')->find($student->program_id);
-                $qualCode = $program ? $program->qualification->code : 'GEN'; // Fallback
+    protected $casts = [
+        'enrollment_date' => 'date'
+    ];
 
-                // 3. Get Next Sequence Number
-                // Count existing students in this program for this year + 1
-                $count = static::where('program_id', $student->program_id)
-                        ->whereYear('created_at', date('Y'))
-                        ->count() + 1;
-                $number = str_pad($count, 3, '0', STR_PAD_LEFT);
-
-                // 4. Combine: 25BSC032
-                $student->student_id = $year . $qualCode . $number;
-            }
-        });
-    }
-
-    public function user()
-    {
-        return $this->morphOne(User::class, 'profileable');
-    }
-
+    // 1. Relationships
+    public function user() {
+            return $this->belongsTo(User::class);
+        }
     public function program()
     {
         return $this->belongsTo(Program::class);
     }
 
-    public function enrollments()
+    public function fees()
     {
-        return $this->hasMany(Enrollment::class);
+        return $this->hasMany(FinanceFee::class);
+    }
+
+    public function examResults()
+    {
+        return $this->hasMany(ExamResult::class);
+    }
+
+    /**
+     * 2. LOGIC: Get courses for the student's CURRENT sequence.
+     * * If Student is in Sequence 3 (Year 2, Sem 1), fetch only Sequence 3 courses
+     * from their Program.
+     */
+    public function currentCourses()
+    {
+        // We act as if we are the Program, but filter by the student's level
+        return $this->program->courses()
+            ->wherePivot('semester_sequence', $this->current_semester_sequence);
+    }
+
+    /**
+     * 3. LOGIC: Get Failed Courses (Carryovers)
+     * Courses from PREVIOUS sequences that do not have a 'passed' exam result.
+     */
+    public function carryOverCourses()
+    {
+        // Get all course IDs the student has passed
+        $passedCourseIds = $this->examResults()->where('is_passed', true)->pluck('course_id');
+
+        // Get all courses from previous sequences (e.g. if I am seq 3, look at 1 and 2)
+        return $this->program->courses()
+            ->wherePivot('semester_sequence', '<', $this->current_semester_sequence)
+            ->whereNotIn('courses.id', $passedCourseIds);
+    }
+
+    /**
+     * 4. Helper: Calculate Total Balance
+     */
+    public function getOutstandingBalanceAttribute()
+    {
+        return $this->fees()->where('status', '!=', 'cleared')->sum('balance');
     }
 }

@@ -8,21 +8,15 @@ use Illuminate\Database\Eloquent\Model;
 class Department extends Model
 {
     use HasPublicId;
-
     protected $guarded = ['id'];
 
-    public function courses()
-    {
+    public function programs() {
+        return $this->hasMany(Program::class);
+    }
+    public function courses() {
         return $this->hasMany(Course::class);
     }
-
-    public function lecturers()
-    {
+    public function lecturers() {
         return $this->hasMany(Lecturer::class);
-    }
-
-    public function programs()
-    {
-        return $this->hasMany(Program::class);
     }
 }

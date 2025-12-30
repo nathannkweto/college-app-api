@@ -8,20 +8,31 @@ use Illuminate\Database\Eloquent\Model;
 class Semester extends Model
 {
     use HasPublicId;
-
     protected $guarded = ['id'];
 
+    protected $fillable = [
+        'academic_year', 'semester_number', 'is_active',
+        'start_date', 'length_weeks'
+    ];
+
     protected $casts = [
+        'start_date' => 'date',
         'is_active' => 'boolean',
     ];
 
-    public function academicYear()
+    // Helper to find the active one easily
+    public static function active()
     {
-        return $this->belongsTo(AcademicYear::class);
+        return self::where('is_active', true)->first();
     }
 
-    public function enrollments()
+    public function examSeasons()
     {
-        return $this->hasMany(Enrollment::class);
+        return $this->hasMany(ExamSeason::class);
+    }
+
+    public function timetableEntries()
+    {
+        return $this->hasMany(TimetableEntry::class);
     }
 }

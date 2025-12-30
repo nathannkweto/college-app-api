@@ -3,16 +3,28 @@
 namespace App\Models;
 
 use App\Traits\HasPublicId;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Admin extends Model
 {
-    use HasPublicId;
+    use HasFactory;
 
-    protected $guarded = ['id'];
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var array<int, string>
+     */
+    protected $fillable = [
+        'user_id',
 
+    ];
+
+    /**
+     * Get the user that owns the admin profile.
+     */
     public function user()
     {
-        return $this->morphOne(User::class, 'profileable');
+        return $this->belongsTo(User::class);
     }
 }

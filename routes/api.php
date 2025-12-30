@@ -1,78 +1,176 @@
 <?php
 
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-
-// Import All Admin Controllers
-use App\Http\Controllers\Api\Admin\DashboardController;
-use App\Http\Controllers\Api\Admin\DepartmentController;
-use App\Http\Controllers\Api\Admin\ProgramController;
-use App\Http\Controllers\Api\Admin\CourseController;
-use App\Http\Controllers\Api\Admin\StudentController;
-use App\Http\Controllers\Api\Admin\LecturerController;
-use App\Http\Controllers\Api\Admin\SemesterController;
-use App\Http\Controllers\Api\Admin\TimetableController;
-use App\Http\Controllers\Api\Admin\ExamController;
-use App\Http\Controllers\Api\Admin\FinanceController;
-use App\Http\Controllers\Api\Core\AuthController; // Assuming you have a basic AuthController for login
 
 /*
 |--------------------------------------------------------------------------
 | API Routes
 |--------------------------------------------------------------------------
+|
+| Base URL: https://matem.edu/api/v1/...
+|
 */
 
-// Public Authentication
-Route::post('auth/login', [AuthController::class, 'login']);
+Route::prefix('v1')->group(function () {
 
-// =========================================================================
-// ADMIN MODULE
-// =========================================================================
-Route::prefix('admin')->middleware(['auth:sanctum'])->group(function () {
+    // =========================================================================
+    // AUTHENTICATION (Public)
+    // =========================================================================
+    Route::prefix('auth')->namespace('App\Http\Controllers\Api\Core')->group(function () {
+        Route::post('login', 'AuthController@login')->name('auth.login');
 
-    // --- Dashboard ---
-    Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
+        // Logout requires a token, so it sits inside the auth middleware group below,
+        // or we can explicitly apply middleware here if preferred.
+    });
 
-    // --- Academics: Structure ---
-    Route::get('/departments', [DepartmentController::class, 'index']);
-    Route::post('/departments', [DepartmentController::class, 'store']);
 
-    Route::get('/programs', [ProgramController::class, 'index']);
-    Route::post('/programs', [ProgramController::class, 'store']);
-    Route::post('/programs/{public_id}/courses', [ProgramController::class, 'addCourse']);
+    // =========================================================================
+    // PROTECTED ROUTES (Requires Bearer Token)
+    // =========================================================================
+    Route::middleware('auth:sanctum')->group(function () {
 
-    Route::get('/courses', [CourseController::class, 'index']);
-    Route::post('/courses', [CourseController::class, 'store']);
+        // --- Auth: Logout ---
+        Route::post('auth/logout', [\App\Http\Controllers\Api\Core\AuthController::class, 'logout'])->name('auth.logout');
 
-    // --- User Management ---
-    Route::get('/students', [StudentController::class, 'index']);
-    Route::post('/students', [StudentController::class, 'store']);
-    Route::post('/students/batch-upload', [StudentController::class, 'batchUpload']); // If implemented
+        // =====================================================================
+        // 1. ADMIN MODULE
+        // Prefix: /api/v1/admin
+        // Namespace: App\Http\Controllers\Api\Admin
+        // =====================================================================
+        Route::group([
+            'prefix' => 'admin',
+            'namespace' => 'App\Http\Controllers\Api\Admin',
+            'as' => 'admin.'
+        ], function () {
 
-    Route::get('/lecturers', [LecturerController::class, 'index']);
-    Route::post('/lecturers', [LecturerController::class, 'store']);
+            // --- Dashboard ---
+            Route::prefix('dashboard')->controller('DashboardController')->group(function () {
+                Route::get('metrics', 'metrics');
+                Route::get('finance', 'finance');
+            });
 
-    // --- Logistics: Time & Levels ---
-    Route::get('/semesters', [SemesterController::class, 'index']);
-    Route::post('/semesters', [SemesterController::class, 'store']); // Create new Term/Level
+            // --- Academics: Departments, Qualifications, Courses ---
+            Route::apiResource('departments', 'DepartmentController')->only(['index', 'store']);
+            Route::apiResource('qualifications', 'QualificationController')->only(['index', 'store']);
+            Route::apiResource('courses', 'CourseController')->only(['index', 'store']);
 
-    Route::post('/semesters/{public_id}/timetable', [TimetableController::class, 'store']);
+            // --- Academics: Programs & Curriculum ---
+            Route::controller('ProgramController')->group(function () {
+                Route::get('programs', 'index');
+                Route::post('programs', 'store');
+                // Program-Course Linking
+                Route::get('programs/{public_id}/courses', 'getCourses');
+                Route::post('programs/{public_id}/courses', 'attachCourse');
+                Route::delete('programs/{public_id}/courses/{course_public_id}', 'detachCourse');
+            });
 
-    // --- Exams ---
-    Route::post('/exams/seasons', [ExamController::class, 'storeSeason']);
-    Route::post('/exams/seasons/{public_id}/generate-numbers', [ExamController::class, 'generateNumbers']);
-    Route::post('/exams/schedules', [ExamController::class, 'storeSchedule']);
+            // --- Students & Promotion ---
+            Route::controller('StudentController')->group(function () {
+                Route::get('students', 'index');
+                Route::post('students', 'store');
+                Route::post('students/batch-upload', 'batchUpload');
+                Route::post('students/promotion-preview', 'promotionPreview');
+                Route::post('students/promote', 'promote');
+            });
 
-    // --- Finance ---
-    Route::post('/finance/fees', [FinanceController::class, 'storeFee']);
-    Route::get('/finance/transactions', [FinanceController::class, 'indexTransactions']);
-    Route::post('/finance/transactions', [FinanceController::class, 'storeTransaction']);
+            // --- Lecturers ---
+            Route::controller('LecturerController')->group(function () {
+                Route::get('lecturers', 'index');
+                Route::post('lecturers', 'store');
+                Route::post('lecturers/batch-upload', 'batchUpload');
+            });
 
-});
+            // --- Logistics: Semesters ---
+            Route::controller('SemesterController')->group(function () {
+                Route::get('semesters', 'index');
+                Route::post('semesters', 'store');
+                Route::get('semesters/active', 'active');
+                Route::post('semesters/{public_id}/end', 'end');
+            });
 
-// =========================================================================
-// OTHER MODULES (Lecturer/Student Portals) - Future Placeholders
-// =========================================================================
-Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
-    return $request->user();
-});
+            // --- Logistics: Timetables ---
+            Route::controller('TimetableController')->prefix('logistics')->group(function () {
+                Route::get('timetable', 'index');
+                Route::post('timetable', 'store');
+            });
+
+            // --- Exams ---
+            Route::prefix('exams')->group(function () {
+                Route::post('seasons', 'ExamSeasonController@store');
+                Route::post('schedules', 'ExamScheduleController@store');
+            });
+
+            // --- Finance ---
+            Route::controller('FinanceController')->prefix('finance')->group(function () {
+                // Route::get('fees', 'indexFees');
+                Route::post('fees', 'storeFee');
+                Route::get('students/{student_id}/fees', 'getStudentFees');
+
+                Route::get('transactions', 'indexTransactions');
+                Route::post('transactions', 'storeTransaction');
+            });
+
+            // --- Results & Publishing ---
+            Route::controller('ResultController')->prefix('results')->group(function () {
+                Route::get('program-summary', 'programSummary');
+                Route::get('student-transcript', 'studentTranscript');
+                Route::post('publish', 'publish');
+            });
+        });
+
+
+        // =====================================================================
+        // 2. LECTURER MODULE
+        // Prefix: /api/v1/lecturer
+        // Namespace: App\Http\Controllers\Api\Lecturer
+        // =====================================================================
+        Route::group([
+            'prefix' => 'lecturer',
+            'namespace' => 'App\Http\Controllers\Api\Lecturer',
+            'as' => 'lecturer.'
+        ], function () {
+
+            // --- Profile & Dashboard ---
+            Route::get('profile', 'ProfileController@show');
+            Route::get('schedule', 'ScheduleController@index');
+
+            // --- Courses ---
+            Route::controller('CourseController')->prefix('courses')->group(function () {
+                Route::get('/', 'index');                  // /lecturer/courses
+                Route::get('summary', 'summary');          // /lecturer/courses/summary
+
+                // Specific Course Actions
+                Route::get('{course_public_id}/students', 'students');
+                Route::post('{course_public_id}/grades', 'submitGrades');
+            });
+        });
+
+
+        // =====================================================================
+        // 3. STUDENT MODULE
+        // Prefix: /api/v1/student
+        // Namespace: App\Http\Controllers\Api\Student
+        // =====================================================================
+        Route::group([
+            'prefix' => 'student',
+            'namespace' => 'App\Http\Controllers\Api\Student',
+            'as' => 'student.'
+        ], function () {
+
+            // --- Profile & Dashboard ---
+            Route::get('profile', 'ProfileController@show');
+            Route::get('schedule', 'ScheduleController@index');
+
+            // --- Academics ---
+            Route::get('courses/current', 'CourseController@current');
+            Route::get('curriculum', 'CurriculumController@index');
+            Route::get('results', 'ResultController@index');
+            Route::get('exams/upcoming', 'ExamController@upcoming');
+
+            // --- Finance ---
+            Route::get('finance', 'FinanceController@index');
+        });
+
+    }); // End Middleware Auth
+
+}); // End Prefix v1

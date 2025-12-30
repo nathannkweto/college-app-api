@@ -4,27 +4,37 @@ namespace App\Models;
 
 use App\Traits\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Program extends Model
 {
     use HasPublicId;
 
     protected $guarded = ['id'];
+    protected $fillable = [
+        'name', 'code', 'total_semesters',
+        'qualification_id', 'department_id'
+    ];
 
-    public function qualification()
+    public function courses(): BelongsToMany
+    {
+        return $this->belongsToMany(Course::class, 'program_course')
+            ->withPivot('semester_sequence')
+            ->orderByPivot('semester_sequence');
+    }
+
+    public function department(): BelongsTo
+    {
+        return $this->belongsTo(Department::class);
+    }
+
+    public function qualification(): BelongsTo
     {
         return $this->belongsTo(Qualification::class);
     }
 
-    // The Many-to-Many relationship with extra pivot data
-    public function courses()
-    {
-        return $this->belongsToMany(Course::class, 'program_course')
-            ->withPivot('semester_sequence'); // Important!
-    }
-
-    public function studentGroups()
-    {
-        return $this->hasMany(StudentGroup::class); // Note: We renamed Group -> StudentGroup
+    public function students() {
+        return $this->hasMany(Student::class);
     }
 }

@@ -8,23 +8,35 @@ use Illuminate\Http\Request;
 
 class DepartmentController extends Controller
 {
+    /**
+     * List all departments.
+     */
     public function index()
     {
-        return Department::all();
+        return response()->json([
+            'data' => Department::select('public_id', 'name', 'code')->get()
+        ]);
     }
 
+    /**
+     * Create a new department.
+     */
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name' => 'required|string|unique:departments,name',
-            'code' => 'required|string|max:5|unique:departments,code',
+            'name' => 'required|string',
+            'code' => 'required|string|unique:departments,code',
         ]);
 
-        $dept = Department::create([
-            'name' => $validated['name'],
-            'code' => strtoupper($validated['code']),
-        ]);
+        $department = Department::create($validated);
 
-        return response()->json($dept, 201);
+        return response()->json([
+            'message' => 'Department created successfully',
+            'data' => [
+                'public_id' => $department->public_id,
+                'name' => $department->name,
+                'code' => $department->code,
+            ]
+        ], 201);
     }
 }

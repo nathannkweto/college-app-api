@@ -8,11 +8,10 @@ use Illuminate\Database\Eloquent\Model;
 class Qualification extends Model
 {
     use HasPublicId;
-
     protected $guarded = ['id'];
+    protected $fillable = ['name', 'code'];
 
-    public function programs()
-    {
+    public function programs() {
         return $this->hasMany(Program::class);
     }
 }

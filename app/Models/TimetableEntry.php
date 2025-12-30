@@ -2,15 +2,32 @@
 
 namespace App\Models;
 
+use App\Traits\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 
 class TimetableEntry extends Model
 {
+    use HasPublicId;
     protected $guarded = ['id'];
 
-    // No Public ID trait needed usually, unless you expose individual slots to API
+    protected $fillable = [
+        'semester_id', 'course_id', 'lecturer_id',
+        'day', 'start_time', 'end_time', 'location'
+    ];
 
-    public function course() { return $this->belongsTo(Course::class); }
-    public function lecturer() { return $this->belongsTo(Lecturer::class); }
-    public function group() { return $this->belongsTo(StudentGroup::class, 'student_group_id'); }
+    public function semester() {
+        return $this->belongsTo(Semester::class);
+    }
+
+    public function course() {
+        return $this->belongsTo(Course::class);
+    }
+
+    public function lecturer() {
+        return $this->belongsTo(Lecturer::class);
+    }
+
+    public function program() {
+        return $this->belongsTo(Program::class);
+    }
 }
