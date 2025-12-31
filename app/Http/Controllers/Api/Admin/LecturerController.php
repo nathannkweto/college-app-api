@@ -141,13 +141,15 @@ class LecturerController extends Controller
             ], 201);
 
         } catch (\Exception $e) {
-            Log::error('Lecturer Registration Failed: ' . $e->getMessage());
+            // 1. Get the Real Database Error
+            $realError = $e->getPrevious() ? $e->getPrevious()->getMessage() : $e->getMessage();
+
+            Log::error('Lecturer Registration CRASHED. Real Reason: ' . $realError);
 
             return response()->json([
                 'error' => 'Registration Failed',
-                'message' => $e->getMessage(),
+                'debug_message' => $realError, // Look at this in your Postman/Flutter response
                 'line' => $e->getLine(),
-                'file' => basename($e->getFile())
             ], 500);
         }
     }
