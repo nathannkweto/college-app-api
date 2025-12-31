@@ -28,7 +28,7 @@ class StudentController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Student::with('program'); // Ensure program is eager loaded
+        $query = Student::with('program');
 
         // ... (Keep your search and filter logic here) ...
 
@@ -36,13 +36,11 @@ class StudentController extends Controller
             return [
                 'public_id'    => $student->public_id,
                 'student_id'   => $student->student_id,
-                // 🔴 FIX: Send separate first/last names (Snake Case)
                 'first_name'   => $student->first_name,
                 'last_name'    => $student->last_name,
                 'email'        => $student->email,
-                'gender'       => $student->gender, // Ensure "M" or "F"
+                'gender'       => $student->gender,
 
-                // 🔴 FIX: Send a Program Object, not a string
                 'program'      => [
                     'public_id' => $student->program->public_id ?? '',
                     'name'      => $student->program->name ?? 'N/A',
@@ -132,7 +130,7 @@ class StudentController extends Controller
     }
 
     /**
-     * Batch create students from a JSON array (or CSV parsed on frontend).
+     * Batch create students from a CSV FILE.
      */
     public function batchUpload(Request $request)
     {
@@ -153,8 +151,7 @@ class StudentController extends Controller
         DB::transaction(function () use ($request) {
             foreach ($request->students as $studentData) {
                 /**
-                 * TODO: In a real app, you might want to wrap this in a try-catch
-                 *  to report which specific rows failed.
+                 * TODO: wrap this in a try-catch to report which specific rows failed.
                  */
                 $this->createStudent($studentData);
             }
@@ -236,7 +233,6 @@ class StudentController extends Controller
             $reason = 'Automatic semester progression';
 
             if ($isYearlyPromotion) {
-                // Check if they passed everything in the current YEAR (e.g. Seq 1 and 2)
                 $hasFailures = $this->hasFailuresInYear($student, $currentSeq);
 
                 if ($hasFailures) {
@@ -268,7 +264,7 @@ class StudentController extends Controller
                 'eligible' => $eligibleCount,
                 'detained' => $detainedCount
             ],
-            'details' => $details // Frontend can show a list of who will fail
+            'details' => $details
         ]);
     }
 
@@ -305,8 +301,6 @@ class StudentController extends Controller
                 if ($isYearlyPromotion) {
                     if ($this->hasFailuresInYear($student, $currentSeq)) {
                         $shouldPromote = false;
-                        // Optional: Mark student status as 'repeating' if you want
-                        // $student->update(['status' => 'repeating']);
                     }
                 }
 
@@ -330,7 +324,6 @@ class StudentController extends Controller
 
     /**
      * Helper: Check if student failed courses in the academic year ending at $currentSeq.
-     * e.g., If finishing Seq 2, check failures in Seq 1 and Seq 2.
      */
     private function hasFailuresInYear($student, $currentSeq)
     {

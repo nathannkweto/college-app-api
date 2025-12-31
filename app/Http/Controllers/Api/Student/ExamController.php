@@ -12,7 +12,6 @@ class ExamController extends Controller
 {
     /**
      * Get upcoming exam schedule.
-     * Route: GET /api/v1/student/exams/upcoming
      */
     public function upcoming(Request $request)
     {

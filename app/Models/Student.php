@@ -43,21 +43,18 @@ class Student extends Model
      */
     public function currentCourses()
     {
-        // We act as if we are the Program, but filter by the student's level
         return $this->program->courses()
             ->wherePivot('semester_sequence', $this->current_semester_sequence);
     }
 
     /**
-     * 3. LOGIC: Get Failed Courses (Carryovers)
+     * 3. LOGIC: Get Failed Courses
      * Courses from PREVIOUS sequences that do not have a 'passed' exam result.
      */
     public function carryOverCourses()
     {
-        // Get all course IDs the student has passed
         $passedCourseIds = $this->examResults()->where('is_passed', true)->pluck('course_id');
 
-        // Get all courses from previous sequences (e.g. if I am seq 3, look at 1 and 2)
         return $this->program->courses()
             ->wherePivot('semester_sequence', '<', $this->current_semester_sequence)
             ->whereNotIn('courses.id', $passedCourseIds);

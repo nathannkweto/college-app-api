@@ -15,7 +15,6 @@ class ResultController extends Controller
 {
     /**
      * Get pass/fail stats for a program in the active semester.
-     * Route: GET /results/program-summary
      */
     public function programSummary(Request $request)
     {
@@ -36,8 +35,7 @@ class ResultController extends Controller
         $totalStudents = Student::where('program_id', $program->id)->where('status', 'active')->count();
 
         // Count Passed/Failed results for this semester/program combo
-        // This is a rough summary (Pass = passed all courses? or just sum of passed courses?)
-        // Usually, administrators want to know course-level performance first.
+        // TODO: This is a rough summary (Pass = passed all courses? or just sum of passed courses?)
 
         $courseStats = DB::table('exam_results')
             ->join('courses', 'exam_results.course_id', '=', 'courses.id')
@@ -67,7 +65,6 @@ class ResultController extends Controller
 
     /**
      * Get a specific student's full transcript.
-     * Route: GET /results/student-transcript
      */
     public function studentTranscript(Request $request)
     {
@@ -100,7 +97,6 @@ class ResultController extends Controller
 
     /**
      * Publish results for a Program + Semester.
-     * Route: POST /results/publish
      */
     public function publish(Request $request)
     {

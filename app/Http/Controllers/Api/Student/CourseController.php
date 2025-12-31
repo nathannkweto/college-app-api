@@ -10,7 +10,6 @@ class CourseController extends Controller
 {
     /**
      * Get courses the student is currently studying (based on sequence).
-     * Route: GET /api/v1/student/courses/current
      */
     public function current(Request $request)
     {
@@ -29,11 +28,11 @@ class CourseController extends Controller
         })->concat($carryOverCourses->map(function ($course) {
             return [
                 'code' => $course->code,
-                'name' => $course->name . ' (Repeat)', // Optional: tag carry-overs
+                'name' => $course->name . ' (Repeat)',
             ];
         }));
 
-        // 3. Wrap in the 'data' key required by your Spec
+        // 3. Wrap in the 'data' key
         return response()->json([
             'data' => $allCourses
         ]);

@@ -20,7 +20,7 @@ class Semester extends Model
         'is_active' => 'boolean',
     ];
 
-    // Helper to find the active one easily
+    // Helper to find the active semester
     public static function active()
     {
         return self::where('is_active', true)->first();

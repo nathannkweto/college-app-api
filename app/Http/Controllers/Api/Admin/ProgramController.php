@@ -75,7 +75,6 @@ class ProgramController extends Controller
     {
         $program = Program::where('public_id', $public_id)->firstOrFail();
 
-        // Using the relationship defined in your model with 'orderByPivot'
         $curriculum = $program->courses->map(function ($course) {
             return [
                 'course_public_id' => $course->public_id,
@@ -90,7 +89,6 @@ class ProgramController extends Controller
         return response()->json(['data' => $curriculum]);
     }
 
-    // POST /programs/{publicId}/courses
     /**
      * Attach a course to a program (Curriculum Builder).
      */
@@ -104,13 +102,10 @@ class ProgramController extends Controller
         $program = Program::where('public_id', $public_id)->firstOrFail();
         $course = Course::where('public_id', $request->course_public_id)->firstOrFail();
 
-        // Validate max semesters
         if ($request->semester_sequence > $program->total_semesters) {
             return response()->json(['message' => 'Semester sequence exceeds program duration.'], 422);
         }
 
-        // Attach or Update (syncWithoutDetaching ensures we don't duplicate if called twice)
-        // We use the ID (integer) for the pivot table
         $program->courses()->syncWithoutDetaching([
             $course->id => ['semester_sequence' => $request->semester_sequence]
         ]);

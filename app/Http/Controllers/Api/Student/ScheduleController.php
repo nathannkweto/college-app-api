@@ -12,7 +12,6 @@ class ScheduleController extends Controller
 {
     /**
      * Get the timetable for the student's current courses.
-     * Route: GET /api/v1/student/schedule
      */
     public function index(Request $request)
     {
@@ -25,11 +24,9 @@ class ScheduleController extends Controller
             return response()->json(['message' => 'No active semester.'], 404);
         }
 
-        // Get IDs of courses the student is taking now (Current + Carryovers)
         $courseIds = $student->currentCourses()->pluck('courses.id')
             ->merge($student->carryOverCourses()->pluck('courses.id'));
 
-        // Fetch timetable entries for these courses in the active semester
         $schedule = TimetableEntry::with(['course', 'lecturer'])
             ->where('semester_id', $activeSemester->id)
             ->whereIn('course_id', $courseIds)
@@ -37,7 +34,6 @@ class ScheduleController extends Controller
             ->orderBy('start_time')
             ->get();
 
-        // Group by day for the frontend (Monday, Tuesday...)
         return response()->json([
             'semester' => $activeSemester->academic_year . ' - Sem ' . $activeSemester->semester_number,
             'schedule' => $schedule->groupBy('day')

@@ -10,7 +10,6 @@ class ProfileController extends Controller
 {
     /**
      * Get the authenticated student's profile.
-     * Route: GET /api/v1/student/profile
      */
     public function show(Request $request)
     {
@@ -22,7 +21,7 @@ class ProfileController extends Controller
         }
 
         return response()->json([
-            'data' => [ // This matches the YAML wrapper
+            'data' => [
                 'student_id'       => $student->student_id,
                 'first_name'       => $student->first_name,
                 'last_name'        => $student->last_name,

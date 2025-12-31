@@ -23,10 +23,10 @@ class SemesterController extends Controller
         return response()->json([
             'data' => [
                 'public_id'       => $semester->public_id,
-                'academic_year'   => $semester->academic_year,   // Back to snake_case
-                'semester_number' => $semester->semester_number, // Send as integer (1 or 2)
+                'academic_year'   => $semester->academic_year,
+                'semester_number' => $semester->semester_number,
                 'is_active'       => (bool) $semester->is_active,
-                'start_date'      => $semester->start_date->format('Y-m-d'), // Match format: date
+                'start_date'      => $semester->start_date->format('Y-m-d'),
                 'length_weeks'    => (int) $semester->length_weeks,
             ]
         ]);
@@ -46,21 +46,6 @@ class SemesterController extends Controller
         });
 
         return response()->json(['data' => $semesters]);
-    }
-
-    /**
-     * Helper to map Snake Case (DB) to Camel Case (OpenAPI/Dart)
-     */
-    private function transformSemester($sem)
-    {
-        return [
-            'public_id'      => (string) $sem->public_id,
-            'academicYear'   => (string) $sem->academic_year,
-            'semesterNumber' => "number" . $sem->semester_number,
-            'startDate'      => $sem->start_date->toIso8601String(),
-            'lengthWeeks'    => (int) $sem->length_weeks,
-            'isActive'       => (bool) $sem->is_active,
-        ];
     }
 
     /**

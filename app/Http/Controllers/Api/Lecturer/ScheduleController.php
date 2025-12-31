@@ -23,7 +23,6 @@ class ScheduleController extends Controller
             ->where('semester_id', $activeSemester->id)
             ->get();
 
-        // ALIGNMENT: Convert grouped map to a List of DailySchedule
         $days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
         $formattedSchedule = collect($days)->map(function ($day) use ($scheduleData) {

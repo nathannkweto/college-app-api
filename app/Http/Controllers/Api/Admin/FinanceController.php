@@ -13,7 +13,6 @@ class FinanceController extends Controller
 {
     /**
      * Display a listing of financial transactions.
-     * Route: GET /api/admin/finance/transactions
      */
     public function indexTransactions()
     {
@@ -40,7 +39,6 @@ class FinanceController extends Controller
 
     /**
      * Fetch all fees for a specific student.
-     * Route: GET /api/admin/finance/students/{student}/fees
      */
     public function getStudentFees($studentInput)
     {
@@ -59,7 +57,6 @@ class FinanceController extends Controller
 
     /**
      * Create Invoices (Bulk or Single).
-     * Route: POST /api/admin/finance/fees
      */
     public function storeFee(Request $request)
     {
@@ -81,7 +78,6 @@ class FinanceController extends Controller
                 break;
 
             case 'PROGRAM':
-                // For Programs, we expect the valid UUID (usually from a dropdown)
                 $prog = Program::where('public_id', $validated['target_public_id'])->firstOrFail();
 
                 $studentsToInvoice = Student::where('program_id', $prog->id)
@@ -90,10 +86,9 @@ class FinanceController extends Controller
                 break;
 
             case 'STUDENT':
-                // For Students, we allow Human-Readable ID (e.g., "ST-2024-001")
                 $input = trim($validated['target_public_id']);
 
-                // Search by 'student_id' (readable) OR 'public_id' (system uuid)
+                // Search by 'student_id' OR 'public_id'
                 $student = Student::where('student_id', $input)
                     ->orWhere('public_id', $input)
                     ->first();
@@ -127,7 +122,6 @@ class FinanceController extends Controller
 
     /**
      * Record a Payment or Expense.
-     * Route: POST /api/admin/finance/transactions
      */
     public function storeTransaction(Request $request)
     {
@@ -149,7 +143,6 @@ class FinanceController extends Controller
                 $feeId = $fee->id;
 
                 // 2. OVERRIDE the title to use the readable Student ID
-                // This ensures it saves as "Fee Payment - ST-2024-001" regardless of frontend input
                 $validated['title'] = "Fee Payment - " . $fee->student->student_id . " " . $fee->title;
             }
         }
@@ -162,9 +155,6 @@ class FinanceController extends Controller
             'transaction_id' => $validated['transaction_id'],
             'finance_fee_id' => $feeId
         ]);
-
-        // Note: Ensure your FinanceTransaction observer calls $fee->recalculateBalance()
-        // if $feeId is present, or add that logic here manually if you don't use Observers.
 
         return response()->json($transaction, 201);
     }

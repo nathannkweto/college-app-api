@@ -44,8 +44,6 @@ jobs:
           extensions: pdo_pgsql, pgsql
 
       # 5. Run Migrations against Neon
-      # Added --no-scripts to prevent "Zombie Autoloader" crashes
-      # Added --ignore-platform-reqs to prevent version strictness errors
       - name: Run Migrations
         run: |
           composer install --no-dev --prefer-dist --no-scripts --ignore-platform-reqs
@@ -77,9 +75,16 @@ jobs:
             DB_USERNAME=${{ secrets.DB_USERNAME }}
             DB_PASSWORD=${{ secrets.DB_PASSWORD }}
             CORS_ALLOWED_ORIGINS=${{ secrets.CORS_ALLOWED_ORIGINS }}
+            MAIL_MAILER=${{ secrets.MAIL_MAILER }}
+            MAIL_HOST=${{ secrets.MAIL_HOST }}
+            MAIL_PORT=${{ secrets.MAIL_PORT }}
+            MAIL_USERNAME=${{ secrets.MAIL_USERNAME }}
+            MAIL_PASSWORD=${{ secrets.MAIL_PASSWORD }}
+            MAIL_ENCRYPTION=${{ secrets.MAIL_ENCRYPTION }}
+            MAIL_FROM_ADDRESS=${{ secrets.MAIL_FROM_ADDRESS }}
+            MAIL_FROM_NAME=${{ secrets.MAIL_FROM_NAME }}
 
       # 7. Update or Create the Cloud Run Job
-      # Using 'deploy' command handles both create and update automatically
       - name: 'Update Cloud Run Job'
         run: |-
           gcloud run jobs deploy tinker-maintenance \
@@ -89,7 +94,7 @@ jobs:
             --command="php" \
             --args="artisan,tinker,scripts/seed.php"
 
-      # 8. Execute the Job (Optional: Only if you want it to run on every deploy)
+      # 8. Execute the Job (on every deploy)
       - name: 'Execute Cloud Run Job'
         run: |-
           gcloud run jobs execute tinker-maintenance --region ${{ env.REGION }} --wait

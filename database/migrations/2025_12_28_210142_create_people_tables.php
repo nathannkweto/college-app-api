@@ -50,10 +50,8 @@ return new class extends Migration
             $table->string('address')->nullable();
             $table->string('phone');
 
-            // Academic State
             $table->foreignId('program_id')->constrained();
 
-            // THE ENGINE: Tracks their progress regardless of calendar date
             $table->integer('current_semester_sequence')->default(1);
 
             $table->enum('status', ['active', 'inactive', 'graduated', 'suspended'])->default('active');

@@ -21,7 +21,6 @@ class CheckRole
         }
 
         // 2. Check if the user's role matches the required role
-        // We strictly compare the strings (e.g., "ADMIN" !== "STUDENT")
         if ($request->user()->role !== $role) {
             return response()->json(['message' => 'Forbidden. Access denied.'], 403);
         }

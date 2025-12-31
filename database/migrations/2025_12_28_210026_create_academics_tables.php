@@ -48,17 +48,16 @@ return new class extends Migration
             $table->uuid('public_id')->unique();
             $table->string('name');
             $table->string('code')->unique();
-            $table->foreignId('department_id')->constrained(); // Owner department
+            $table->foreignId('department_id')->constrained();
             $table->timestamps();
         });
 
-        // 5. PROGRAM_COURSE (The Curriculum Pivot) - CRITICAL TABLE
+        // 5. PROGRAM_COURSE
         Schema::create('program_course', function (Blueprint $table) {
             $table->id();
             $table->foreignId('program_id')->constrained()->cascadeOnDelete();
             $table->foreignId('course_id')->constrained()->cascadeOnDelete();
 
-            // LOGIC: This course belongs to Semester X of this program
             $table->integer('semester_sequence');
 
             $table->unique(['program_id', 'course_id']);

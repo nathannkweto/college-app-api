@@ -26,9 +26,9 @@ class ResultController extends Controller
                 'semester_name' => $semesterName,
                 'results' => $results->map(function ($r) {
                     return [
-                        'course_name' => $r->course->name, // YAML uses course_name
+                        'course_name' => $r->course->name,
                         'grade'       => $r->grade,
-                        'points'      => (float) ($r->points ?? 0), // YAML uses points
+                        'points'      => (float) ($r->points ?? 0),
                     ];
                 })->values()
             ];

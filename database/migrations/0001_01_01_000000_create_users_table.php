@@ -7,8 +7,7 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     /**
-     * FIX: Disable transactions to prevent "current transaction is aborted"
-     * errors on strict Postgres/Neon connections.
+     * Disable transactions to prevent "current transaction is aborted"
      */
     public $withinTransaction = false;
 

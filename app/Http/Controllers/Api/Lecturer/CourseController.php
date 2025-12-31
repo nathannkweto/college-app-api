@@ -9,7 +9,6 @@ use App\Models\Semester;
 use App\Models\Student;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 
 class CourseController extends Controller
 {
@@ -37,9 +36,6 @@ class CourseController extends Controller
         return response()->json(['data' => $courses]);
     }
 
-    /**
-     * FIX: Added missing summary method for Dashboard
-     */
     public function summary(Request $request)
     {
         $lecturer = Auth::user()->profile;
@@ -111,7 +107,6 @@ class CourseController extends Controller
 
     public function submitGrades(Request $request, $course_public_id)
     {
-        // Validation and logic remain as previously discussed
         return response()->json(['message' => 'Grades submitted successfully.']);
     }
 }

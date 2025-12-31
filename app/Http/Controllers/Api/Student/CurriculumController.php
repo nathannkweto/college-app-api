@@ -24,11 +24,9 @@ class CurriculumController extends Controller
 
         // 2. Group and Transform into the "semesters" array defined in YAML
         $semesters = $allCourses->groupBy('semester_sequence')->map(function ($courses, $sequence) use ($student) {
-            // FIX: Cast $sequence to int to allow mathematical operations
             $seq = (int) $sequence;
 
             return [
-                // Now using $seq (int) instead of $sequence (string)
                 'title' => "Year " . ceil($seq / 2) . " - Semester " . ($seq % 2 == 0 ? 2 : 1),
                 'is_cleared' => (int) $student->current_semester_sequence > $seq,
                 'is_current' => (int) $student->current_semester_sequence == $seq,
@@ -40,9 +38,9 @@ class CurriculumController extends Controller
                     ];
                 })->values()
             ];
-        })->values(); // values() ensures it's a JSON List [], not an Object {}
+        })->values();
 
-        // 3. Wrap in the 'data' key with all properties required by CurriculumProgress
+        // 3. Wrap in the 'data' key
         return response()->json([
             'data' => [
                 'program_name' => $program->name,
@@ -60,8 +58,6 @@ class CurriculumController extends Controller
         $total = $program->courses()->count();
         if ($total == 0) return 0.0;
 
-        // Logic: How many semesters has the student finished?
-        // A more accurate way would be counting passed courses in exam_results
         $completedSemesters = $student->current_semester_sequence - 1;
         $approxCoursesDone = $program->courses()->where('semester_sequence', '<', $student->current_semester_sequence)->count();
 

@@ -6,13 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Course;
 use App\Models\Department;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log; // Import Log
 
 class CourseController extends Controller
 {
     public function index()
     {
-        // Eager load department for context
         $courses = Course::with('department')->get()->map(function($course) {
             return [
                 'public_id' => $course->public_id,

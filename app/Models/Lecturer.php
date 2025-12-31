@@ -17,7 +17,7 @@ class Lecturer extends Model
     ];
 
     protected $casts = [
-        'dob' => 'date', // or 'datetime'
+        'dob' => 'date',
     ];
 
     public function user() {

@@ -17,7 +17,6 @@ return new class extends Migration
             $table->string('academic_year');
             $table->integer('semester_number');
 
-            // State Machine Flags
             $table->boolean('is_active')->default(true);
 
             $table->date('start_date');

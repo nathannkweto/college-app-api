@@ -24,7 +24,6 @@ class DashboardController extends Controller
         $programsCount = Program::count();
 
         // "Levels" can be interpreted as total defined semesters or academic years
-        // Adjust this logic if you have a specific "Level" model
         $levelsCount = Semester::count();
 
         return response()->json([
@@ -44,14 +43,12 @@ class DashboardController extends Controller
     public function finance(): JsonResponse
     {
         // 1. Calculate Financial Totals (All Time)
-        // Ensure 'type' matches your database enum exactly ('income', 'expense')
         $totalIncome = FinanceTransaction::where('type', 'income')->sum('amount');
         $totalExpenses = FinanceTransaction::where('type', 'expense')->sum('amount');
 
         $netBalance = $totalIncome - $totalExpenses;
 
         // 2. Get Active Semester Name for display
-        // Assumes you have a scopeActive() on your Semester model
         $activeSemester = Semester::where('is_active', true)->first();
 
         $semesterName = $activeSemester

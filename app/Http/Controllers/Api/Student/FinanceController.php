@@ -15,8 +15,7 @@ class FinanceController extends Controller
         // 1. Get total balance
         $outstanding = $student->outstanding_balance;
 
-        // 2. Get transactions (If you have a dedicated Transaction model, use that)
-        // For now, we'll extract them from your fees relationship
+        // 2. Get transactions
         $fees = $student->fees()->with('transactions')->get();
 
         $transactions = [];
@@ -32,7 +31,7 @@ class FinanceController extends Controller
             }
         }
 
-        // 3. Wrap in the 'data' key required by your Spec
+        // 3. Wrap in the 'data' key
         return response()->json([
             'data' => [
                 'balance'      => (float) $outstanding,

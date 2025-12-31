@@ -6,7 +6,6 @@ use Illuminate\Database\Eloquent\Model;
 
 class ExamResult extends Model
 {
-    // No HasPublicId unless migration is updated
     protected $guarded = ['id'];
 
     protected $fillable = [

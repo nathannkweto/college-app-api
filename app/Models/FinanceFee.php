@@ -34,7 +34,7 @@ class FinanceFee extends Model
 
     /**
      * Balance and status based on transactions.
-     * Call this whenever a payment is made.
+     * Called whenever a payment is made.
      */
     public function recalculateBalance()
     {

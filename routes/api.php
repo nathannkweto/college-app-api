@@ -18,9 +18,6 @@ Route::prefix('v1')->group(function () {
     // =========================================================================
     Route::prefix('auth')->namespace('App\Http\Controllers\Api\Core')->group(function () {
         Route::post('login', 'AuthController@login')->name('auth.login');
-
-        // Logout requires a token, so it sits inside the auth middleware group below,
-        // or we can explicitly apply middleware here if preferred.
     });
 
 

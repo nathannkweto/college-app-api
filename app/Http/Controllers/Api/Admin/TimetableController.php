@@ -58,8 +58,6 @@ class TimetableController extends Controller
         $course = Course::where('public_id', $request->course_public_id)->first();
         $lecturer = Lecturer::where('public_id', $request->lecturer_public_id)->first();
 
-        // --- CONFLICT CHECKS ---
-
         // 1. Check if Lecturer is busy
         if ($this->hasConflict($activeSemester->id, 'lecturer_id', $lecturer->id, $request)) {
             return response()->json(['message' => 'Lecturer is already teaching another class at this time.'], 409);
