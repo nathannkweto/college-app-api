@@ -3,5 +3,4 @@
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    return ['status' => 'API is running'];
-});
+    return response()->json(['status' => 'API is running']);});

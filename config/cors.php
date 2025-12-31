@@ -6,24 +6,36 @@ return [
     */
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
 
-    'allowed_methods' => ['*'],
+    'allowed_methods' => [
+        'GET',
+        'POST',
+        'PUT',
+        'PATCH',
+        'DELETE',
+        'OPTIONS',
+    ],
 
     /*
     | FOR TESTING
     | GitHub Pages origin.
     */
-    'allowed_origins' => [
-        'https://nathannkweto.github.io',
-        'http://localhost:5000',
-    ],
+    'allowed_origins' => explode(',', env('CORS_ALLOWED_ORIGINS', '')),
 
     'allowed_origins_patterns' => [],
 
-    'allowed_headers' => ['*'],
+    'allowed_headers' => [
+        'Content-Type',
+        'Authorization',
+        'X-Requested-With',
+        'Accept',
+        'Origin',
+    ],
 
-    'exposed_headers' => [],
+    'exposed_headers' => [
+        'Authorization',
+    ],
 
-    'max_age' => 0,
+    'max_age' => 600,
 
-    'supports_credentials' => false,
+    'supports_credentials' => true,
 ];

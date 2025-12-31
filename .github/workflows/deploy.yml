@@ -76,6 +76,7 @@ jobs:
             DB_DATABASE=${{ secrets.DB_DATABASE }}
             DB_USERNAME=${{ secrets.DB_USERNAME }}
             DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            CORS_ALLOWED_ORIGINS=${{ secrets.CORS_ALLOWED_ORIGINS }}
 
       # 7. Update or Create the Cloud Run Job
       # Using 'deploy' command handles both create and update automatically
