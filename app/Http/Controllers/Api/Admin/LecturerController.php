@@ -6,17 +6,17 @@ use App\Http\Controllers\Controller;
 use App\Models\Lecturer;
 use App\Models\Department;
 use App\Models\User;
-use App\Services\NotificationService;
+use App\Services\NotificationService; // Import the Service
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Log;
 
 class LecturerController extends Controller
 {
     protected $notifier;
 
+    // Inject the NotificationService
     public function __construct(NotificationService $notifier)
     {
         $this->notifier = $notifier;
@@ -34,39 +34,40 @@ class LecturerController extends Controller
             if ($dept) $query->where('department_id', $dept->id);
         }
 
+        // Explicitly map the data to match your OpenAPI Spec keys
         $paginated = $query->paginate(15);
 
         return response()->json([
             'data' => $paginated->getCollection()->map(function ($lecturer) {
                 return [
-                    'public_id'   => $lecturer->public_id,
+                    'public_id' => $lecturer->public_id,
                     'lecturer_id' => $lecturer->lecturer_id,
-                    'first_name'  => $lecturer->first_name,
-                    'last_name'   => $lecturer->last_name,
-                    'email'       => $lecturer->email,
-                    'title'       => $lecturer->title,
-                    'gender'      => $lecturer->gender,
-                    'department'  => [
-                        'id'   => $lecturer->department->id,
+                    'first_name' => $lecturer->first_name,
+                    'last_name' => $lecturer->last_name,
+                    'email' => $lecturer->email,
+                    'title' => $lecturer->title,  // Must match Mr, Ms, etc.
+                    'gender' => $lecturer->gender, // Must match M, F
+                    'department' => [
+                        'id' => $lecturer->department->id,
                         'name' => $lecturer->department->name,
                         'code' => $lecturer->department->code,
                     ],
                     'national_id' => $lecturer->national_id,
-                    'dob'         => $lecturer->dob ? $lecturer->dob->format('Y-m-d') : null,
-                    'address'     => $lecturer->address,
-                    'phone'       => $lecturer->phone,
+                    'dob' => $lecturer->dob ? $lecturer->dob->format('Y-m-d') : null,
+                    'address' => $lecturer->address,
+                    'phone' => $lecturer->phone,
                 ];
             }),
             'meta' => [
                 'current_page' => $paginated->currentPage(),
-                'last_page'    => $paginated->lastPage(),
-                'total'        => $paginated->total(),
+                'last_page' => $paginated->lastPage(),
+                'total' => $paginated->total(),
             ]
         ]);
     }
 
     /**
-     * Create a new Lecturer.
+     * Create a new Lecturer and User account.
      */
     public function store(Request $request)
     {
@@ -83,74 +84,61 @@ class LecturerController extends Controller
             'phone' => 'required|string',
         ]);
 
-        try {
-            $registrationResult = DB::transaction(function () use ($validated) {
-                $dept = Department::where('public_id', $validated['department_public_id'])->firstOrFail();
+        // --- 1. COMMENTED OUT TRANSACTION START ---
+        // $registrationResult = DB::transaction(function () use ($validated) {
 
-                // A. Generate Lecturer ID
-                $prefix = "LEC";
-                $deptCode = $dept->code ?? 'GEN';
-                $sequence = Lecturer::where('department_id', $dept->id)->count() + 1;
-                $lecturerId = sprintf("%s-%s-%03d", $prefix, $deptCode, $sequence);
+        $dept = Department::where('public_id', $validated['department_public_id'])->firstOrFail();
 
-                // B. Create User Login
-                $user = User::create([
-                    'name' => $validated['title'] . ' ' . $validated['last_name'],
-                    'email' => $validated['email'],
-                    'password' => Hash::make($lecturerId),
-                    'role' => 'LECTURER',
-                ]);
+        // A. Generate Lecturer ID (e.g. LEC-CS-001)
+        $prefix = "LEC";
+        $deptCode = $dept->code ?? 'GEN';
+        $sequence = Lecturer::where('department_id', $dept->id)->count() + 1;
+        $lecturerId = sprintf("%s-%s-%03d", $prefix, $deptCode, $sequence);
 
-                // C. Create Lecturer Profile
-                $lecturer = Lecturer::create([
-                    'user_id' => $user->id,
-                    'public_id' => (string) Str::uuid(), // Explicitly generate UUID
-                    'first_name' => $validated['first_name'],
-                    'last_name' => $validated['last_name'],
-                    'email' => $validated['email'],
-                    'department_id' => $dept->id,
-                    'gender' => $validated['gender'],
-                    'title' => $validated['title'],
-                    'lecturer_id' => $lecturerId,
-                    'national_id' => $validated['national_id'],
-                    'dob' => $validated['dob'],
-                    'address' => $validated['address'],
-                    'phone' => $validated['phone'],
-                ]);
+        // B. Create User Login
+        $user = User::create([
+            'name' => $validated['title'] . ' ' . $validated['last_name'],
+            'email' => $validated['email'],
+            'password' => Hash::make($lecturerId),
+            'role' => 'LECTURER',
+        ]);
 
-                return [
-                    'user' => $user,
-                    'lecturer_id' => $lecturerId,
-                ];
-            });
+        // C. Create Lecturer Profile
+        $lecturer = Lecturer::create([
+            'user_id' => $user->id,
+            'first_name' => $validated['first_name'],
+            'last_name' => $validated['last_name'],
+            'email' => $validated['email'],
+            'department_id' => $dept->id,
+            'gender' => $validated['gender'],
+            'title' => $validated['title'],
+            'lecturer_id' => $lecturerId,
+            'national_id' => $validated['national_id'],
+            'dob' => $validated['dob'],
+            'address' => $validated['address'],
+            'phone' => $validated['phone'],
+        ]);
 
-            // D. Send Welcome Email (Safe Try-Catch)
-            try {
-                $this->notifier->sendWelcomeEmail(
-                    $registrationResult['user'],
-                    $registrationResult['lecturer_id'],
-                    'lecturer'
-                );
-            } catch (\Exception $e) {
-                Log::error("Lecturer Email failed: " . $e->getMessage());
-            }
+        // IMPORTANT: Instead of 'return', we manually assign the variable
+        // so the script continues to the email section below.
+        $registrationResult = [
+            'user' => $user,
+            'lecturer_id' => $lecturerId,
+        ];
 
-            return response()->json([
-                'message' => 'Lecturer registered successfully',
-                'lecturer_id' => $registrationResult['lecturer_id'],
-            ], 201);
+        // --- 2. COMMENTED OUT TRANSACTION END ---
+        // });
 
-        } catch (\Exception $e) {
-            // 1. Get the Real Database Error
-            $realError = $e->getPrevious() ? $e->getPrevious()->getMessage() : $e->getMessage();
+        // D. Send Welcome Email (Now $registrationResult exists!)
+        $this->notifier->sendWelcomeEmail(
+            $registrationResult['user'],
+            $registrationResult['lecturer_id'],
+            'lecturer'
+        );
 
-            Log::error('Lecturer Registration CRASHED. Real Reason: ' . $realError);
-
-            return response()->json([
-                'error' => 'Registration Failed',
-                'debug_message' => $realError, // Look at this in your Postman/Flutter response
-                'line' => $e->getLine(),
-            ], 500);
-        }
+        return response()->json([
+            'message' => 'Lecturer registered successfully',
+            'lecturer_id' => $registrationResult['lecturer_id'],
+        ], 201);
     }
 }
