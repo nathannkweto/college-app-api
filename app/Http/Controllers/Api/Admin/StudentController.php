@@ -7,24 +7,24 @@ use App\Models\Student;
 use App\Models\Program;
 use App\Models\User;
 use App\Models\ExamResult;
-use App\Services\NotificationService; // Import the Service
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log; // Added Logger
 
 class StudentController extends Controller
 {
     protected $notifier;
 
-    // Inject the NotificationService
     public function __construct(NotificationService $notifier)
     {
         $this->notifier = $notifier;
     }
 
     /**
-     * List Students with pagination and search.
+     * List Students.
      */
     public function index(Request $request)
     {
@@ -40,13 +40,11 @@ class StudentController extends Controller
                 'last_name'    => $student->last_name,
                 'email'        => $student->email,
                 'gender'       => $student->gender,
-
                 'program'      => [
                     'public_id' => $student->program->public_id ?? '',
                     'name'      => $student->program->name ?? 'N/A',
                     'code'      => $student->program->code ?? '',
                 ],
-
                 'current_semester_sequence' => $student->current_semester_sequence,
                 'status' => $student->status,
             ];
@@ -56,7 +54,7 @@ class StudentController extends Controller
     }
 
     /**
-     * Create a new Student and their Login Account.
+     * Create a new Student.
      */
     public function store(Request $request)
     {
@@ -73,64 +71,83 @@ class StudentController extends Controller
             'phone' => 'required|string',
         ]);
 
-        // Wrap transaction
-        $registrationResult = DB::transaction(function () use ($validated) {
-            $program = Program::where('public_id', $validated['program_public_id'])->firstOrFail();
+        try {
+            // Wrap transaction
+            $registrationResult = DB::transaction(function () use ($validated) {
+                $program = Program::where('public_id', $validated['program_public_id'])->firstOrFail();
 
-            // A. Generate Custom Student ID (e.g. 2025-CS-001)
-            $academicYear = date('Y', strtotime($validated['enrollment_date']));
-            $code = $program->code ?? 'STU'; // Fallback if no code
-            $sequence = Student::where('program_id', $program->id)->count() + 1;
-            $studentId = sprintf("%s-%s-%03d", $academicYear, $code, $sequence);
+                // A. Generate Custom Student ID
+                $academicYear = date('Y', strtotime($validated['enrollment_date']));
+                $code = $program->code ?? 'STU';
+                $sequence = Student::where('program_id', $program->id)->count() + 1;
+                $studentId = sprintf("%s-%s-%03d", $academicYear, $code, $sequence);
 
-            // B. Create User Login (Password = Student ID)
-            $user = User::create([
-                'name' => $validated['first_name'] . ' ' . $validated['last_name'],
-                'email' => $validated['email'],
-                'password' => Hash::make($studentId), // Default password is ID
-                'role' => 'STUDENT',
-            ]);
+                // B. Create User Login
+                $user = User::create([
+                    'name' => $validated['first_name'] . ' ' . $validated['last_name'],
+                    'email' => $validated['email'],
+                    'password' => Hash::make($studentId),
+                    'role' => 'STUDENT',
+                ]);
 
-            // C. Create Student Profile
-            $student = Student::create([
-                'user_id' => $user->id,
-                'student_id' => $studentId,
-                'first_name' => $validated['first_name'],
-                'last_name' => $validated['last_name'],
-                'email' => $validated['email'],
-                'program_id' => $program->id,
-                'gender' => $validated['gender'],
-                'national_id' => $validated['national_id'],
-                'current_semester_sequence' => 1, // Start at Year 1
-                'status' => 'active',
-                'enrollment_date' => $validated['enrollment_date'],
-                'dob' => $validated['dob'],
-                'address' => $validated['address'],
-                'phone' => $validated['phone'],
-            ]);
+                // C. Create Student Profile
+                $student = Student::create([
+                    'user_id' => $user->id,
+                    'public_id' => (string) Str::uuid(), // Explicitly generate UUID
+                    'student_id' => $studentId,
+                    'first_name' => $validated['first_name'],
+                    'last_name' => $validated['last_name'],
+                    'email' => $validated['email'],
+                    'program_id' => $program->id,
+                    'gender' => $validated['gender'],
+                    'national_id' => $validated['national_id'],
+                    'current_semester_sequence' => 1,
+                    'status' => 'active',
+                    'enrollment_date' => $validated['enrollment_date'],
+                    'dob' => $validated['dob'],
+                    'address' => $validated['address'],
+                    'phone' => $validated['phone'],
+                ]);
 
-            return [
-                'user' => $user,
-                'student_id' => $studentId,
-                'password' => $studentId
-            ];
-        });
+                return [
+                    'user' => $user,
+                    'student_id' => $studentId,
+                    'password' => $studentId
+                ];
+            });
 
-        // D. Send Welcome Email (Outside Transaction)
-        $this->notifier->sendWelcomeEmail(
-            $registrationResult['user'],
-            $registrationResult['student_id'],
-            'student'
-        );
+            // D. Send Welcome Email (Outside Transaction)
+            // Wrapped in try-catch so email failure doesn't crash the registration
+            try {
+                $this->notifier->sendWelcomeEmail(
+                    $registrationResult['user'],
+                    $registrationResult['student_id'],
+                    'student'
+                );
+            } catch (\Exception $e) {
+                Log::error("Email failed to send: " . $e->getMessage());
+            }
 
-        return response()->json([
-            'message' => 'Student registered successfully',
-            'student_id' => $registrationResult['student_id'],
-        ], 201);
+            return response()->json([
+                'message' => 'Student registered successfully',
+                'student_id' => $registrationResult['student_id'],
+            ], 201);
+
+        } catch (\Exception $e) {
+            // Log the full error for Cloud Run
+            Log::error('Student Registration Failed: ' . $e->getMessage());
+
+            return response()->json([
+                'error' => 'Registration Failed',
+                'message' => $e->getMessage(), // This will show you the REAL error
+                'line' => $e->getLine(),
+                'file' => basename($e->getFile())
+            ], 500);
+        }
     }
 
     /**
-     * Batch create students from a CSV FILE.
+     * Batch create students.
      */
     public function batchUpload(Request $request)
     {
@@ -145,31 +162,34 @@ class StudentController extends Controller
             'dob' => 'required|date',
             'address' => 'required|string',
             'phone' => 'required|string',
-
         ]);
 
-        DB::transaction(function () use ($request) {
-            foreach ($request->students as $studentData) {
-                /**
-                 * TODO: wrap this in a try-catch to report which specific rows failed.
-                 */
-                $this->createStudent($studentData);
-            }
-        });
+        try {
+            DB::transaction(function () use ($request) {
+                foreach ($request->students as $studentData) {
+                    $this->createStudent($studentData);
+                }
+            });
+            return response()->json(['message' => 'Batch upload completed successfully.']);
 
-        return response()->json(['message' => 'Batch upload completed successfully.']);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Batch Upload Failed',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
-     * Helper to create a single student (used by store and batchUpload)
+     * Helper to create a single student.
      */
     private function createStudent($data)
     {
         $program = Program::where('public_id', $data['program_public_id'])->firstOrFail();
 
-        // Ideally pass this in, or generate inside
-        $academicYear = date('Y', ['enrollment_date']);
-        $code = $program->code ?? 'STU'; // Fallback if no code
+        // FIX: Correct date parsing syntax
+        $academicYear = date('Y', strtotime($data['enrollment_date']));
+        $code = $program->code ?? 'STU';
         $sequence = Student::where('program_id', $program->id)->count() + 1;
         $studentId = sprintf("%s-%s-%03d", $academicYear, $code, $sequence);
 
@@ -182,6 +202,7 @@ class StudentController extends Controller
 
         return Student::create([
             'user_id' => $user->id,
+            'public_id' => (string) Str::uuid(), // Explicitly generate UUID
             'student_id' => $studentId,
             'first_name' => $data['first_name'],
             'last_name' => $data['last_name'],
@@ -195,15 +216,13 @@ class StudentController extends Controller
             'dob' => $data['dob'],
             'address' => $data['address'],
             'phone' => $data['phone'],
-
         ]);
     }
 
-    /**
-     * Preview promotion to see who qualifies.
-     */
+    // ... (Keep promotionPreview and promote methods exactly as they were) ...
     public function promotionPreview(Request $request)
     {
+        // ... (Keep existing logic) ...
         $request->validate([
             'program_public_id' => 'required|exists:programs,public_id',
             'current_sequence' => 'required|integer',
@@ -212,13 +231,8 @@ class StudentController extends Controller
         $program = Program::where('public_id', $request->program_public_id)->first();
         $currentSeq = $request->current_sequence;
         $nextSeq = $currentSeq + 1;
-
-        // 1. Determine type of Promotion
-        // If current sequence is even (2, 4, 6), we are finishing a Year.
-        // If current sequence is odd (1, 3, 5), we are just moving to next semester.
         $isYearlyPromotion = ($currentSeq % 2 == 0);
 
-        // 2. Get Candidates
         $students = Student::where('program_id', $program->id)
             ->where('current_semester_sequence', $currentSeq)
             ->where('status', 'active')
@@ -234,7 +248,6 @@ class StudentController extends Controller
 
             if ($isYearlyPromotion) {
                 $hasFailures = $this->hasFailuresInYear($student, $currentSeq);
-
                 if ($hasFailures) {
                     $status = 'DETAINED';
                     $reason = 'Failed courses in current year';
@@ -268,11 +281,9 @@ class StudentController extends Controller
         ]);
     }
 
-    /**
-     * Execute the Promotion.
-     */
     public function promote(Request $request)
     {
+        // ... (Keep existing logic) ...
         $request->validate([
             'program_public_id' => 'required|exists:programs,public_id',
             'current_sequence' => 'required|integer',
@@ -285,17 +296,12 @@ class StudentController extends Controller
         $isGraduating = $nextSeq > $program->total_semesters;
 
         DB::transaction(function () use ($program, $currentSeq, $nextSeq, $isYearlyPromotion, $isGraduating) {
-            // Get all students in this batch
             $students = Student::where('program_id', $program->id)
                 ->where('current_semester_sequence', $currentSeq)
                 ->where('status', 'active')
                 ->get();
 
             foreach ($students as $student) {
-                // Logic:
-                // 1. If mid-year (1->2), everyone moves.
-                // 2. If year-end (2->3), only those with NO failures move.
-
                 $shouldPromote = true;
 
                 if ($isYearlyPromotion) {
@@ -322,33 +328,21 @@ class StudentController extends Controller
         return response()->json(['message' => 'Promotion process completed.']);
     }
 
-    /**
-     * Helper: Check if student failed courses in the academic year ending at $currentSeq.
-     */
     private function hasFailuresInYear($student, $currentSeq)
     {
-        // Identify the sequences in this year.
-        // If current is 2, year is (1, 2). If current is 4, year is (3, 4).
         $sequencesInYear = [$currentSeq - 1, $currentSeq];
 
-        // 1. Get Course IDs attached to these sequences for this Program
         $requiredCourseIds = $student->program->courses()
             ->wherePivotIn('semester_sequence', $sequencesInYear)
             ->pluck('courses.id');
 
-        if ($requiredCourseIds->isEmpty()) return false; // No courses? No failure.
+        if ($requiredCourseIds->isEmpty()) return false;
 
-        // 2. Check Exam Results
-        // We need to see if ANY of these required courses are NOT passed.
-
-        // Get IDs of courses the student has explicitly PASSED
         $passedCourseIds = ExamResult::where('student_id', $student->id)
             ->whereIn('course_id', $requiredCourseIds)
             ->where('is_passed', true)
             ->pluck('course_id');
 
-        // If the number of passed courses < number of required courses, they failed something.
-        // (This assumes 100% pass rate required. You can adjust logic for "Carryovers" here)
         return $passedCourseIds->count() < $requiredCourseIds->count();
     }
 }

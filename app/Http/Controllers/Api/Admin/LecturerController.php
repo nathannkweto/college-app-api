@@ -6,17 +6,17 @@ use App\Http\Controllers\Controller;
 use App\Models\Lecturer;
 use App\Models\Department;
 use App\Models\User;
-use App\Services\NotificationService; // Import the Service
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 
 class LecturerController extends Controller
 {
     protected $notifier;
 
-    // Inject the NotificationService
     public function __construct(NotificationService $notifier)
     {
         $this->notifier = $notifier;
@@ -34,7 +34,6 @@ class LecturerController extends Controller
             if ($dept) $query->where('department_id', $dept->id);
         }
 
-        // Explicitly map the data to match your OpenAPI Spec keys
         $paginated = $query->paginate(15);
 
         return response()->json([
@@ -45,8 +44,8 @@ class LecturerController extends Controller
                     'first_name'  => $lecturer->first_name,
                     'last_name'   => $lecturer->last_name,
                     'email'       => $lecturer->email,
-                    'title'       => $lecturer->title,  // Must match Mr, Ms, etc.
-                    'gender'      => $lecturer->gender, // Must match M, F
+                    'title'       => $lecturer->title,
+                    'gender'      => $lecturer->gender,
                     'department'  => [
                         'id'   => $lecturer->department->id,
                         'name' => $lecturer->department->name,
@@ -67,7 +66,7 @@ class LecturerController extends Controller
     }
 
     /**
-     * Create a new Lecturer and User account.
+     * Create a new Lecturer.
      */
     public function store(Request $request)
     {
@@ -84,56 +83,72 @@ class LecturerController extends Controller
             'phone' => 'required|string',
         ]);
 
-        $registrationResult = DB::transaction(function () use ($validated) {
-            $dept = Department::where('public_id', $validated['department_public_id'])->firstOrFail();
+        try {
+            $registrationResult = DB::transaction(function () use ($validated) {
+                $dept = Department::where('public_id', $validated['department_public_id'])->firstOrFail();
 
-            // A. Generate Lecturer ID (e.g. LEC-CS-001)
-            $prefix = "LEC";
-            $deptCode = $dept->code ?? 'GEN';
-            $sequence = Lecturer::where('department_id', $dept->id)->count() + 1;
-            $lecturerId = sprintf("%s-%s-%03d", $prefix, $deptCode, $sequence);
+                // A. Generate Lecturer ID
+                $prefix = "LEC";
+                $deptCode = $dept->code ?? 'GEN';
+                $sequence = Lecturer::where('department_id', $dept->id)->count() + 1;
+                $lecturerId = sprintf("%s-%s-%03d", $prefix, $deptCode, $sequence);
 
-            // B. Create User Login
-            $user = User::create([
-                'name' => $validated['title'] . ' ' . $validated['last_name'],
-                'email' => $validated['email'],
-                'password' => Hash::make($lecturerId),
-                'role' => 'LECTURER',
-            ]);
+                // B. Create User Login
+                $user = User::create([
+                    'name' => $validated['title'] . ' ' . $validated['last_name'],
+                    'email' => $validated['email'],
+                    'password' => Hash::make($lecturerId),
+                    'role' => 'LECTURER',
+                ]);
 
-            // C. Create Lecturer Profile
-            $lecturer = Lecturer::create([
-                'user_id' => $user->id,
-                'first_name' => $validated['first_name'],
-                'last_name' => $validated['last_name'],
-                'email' => $validated['email'],
-                'department_id' => $dept->id,
-                'gender' => $validated['gender'],
-                'title' => $validated['title'],
-                'lecturer_id' => $lecturerId,
-                'national_id' => $validated['national_id'],
-                'dob' => $validated['dob'],
-                'address' => $validated['address'],
-                'phone' => $validated['phone'],
-            ]);
+                // C. Create Lecturer Profile
+                $lecturer = Lecturer::create([
+                    'user_id' => $user->id,
+                    'public_id' => (string) Str::uuid(), // Explicitly generate UUID
+                    'first_name' => $validated['first_name'],
+                    'last_name' => $validated['last_name'],
+                    'email' => $validated['email'],
+                    'department_id' => $dept->id,
+                    'gender' => $validated['gender'],
+                    'title' => $validated['title'],
+                    'lecturer_id' => $lecturerId,
+                    'national_id' => $validated['national_id'],
+                    'dob' => $validated['dob'],
+                    'address' => $validated['address'],
+                    'phone' => $validated['phone'],
+                ]);
 
+                return [
+                    'user' => $user,
+                    'lecturer_id' => $lecturerId,
+                ];
+            });
 
-            return [
-                'user' => $user,
-                'lecturer_id' => $lecturerId,
-            ];
-        });
+            // D. Send Welcome Email (Safe Try-Catch)
+            try {
+                $this->notifier->sendWelcomeEmail(
+                    $registrationResult['user'],
+                    $registrationResult['lecturer_id'],
+                    'lecturer'
+                );
+            } catch (\Exception $e) {
+                Log::error("Lecturer Email failed: " . $e->getMessage());
+            }
 
-        // D. Send Welcome Email (Outside Transaction)
-        $this->notifier->sendWelcomeEmail(
-            $registrationResult['user'],
-            $registrationResult['lecturer_id'],
-            'lecturer'
-        );
+            return response()->json([
+                'message' => 'Lecturer registered successfully',
+                'lecturer_id' => $registrationResult['lecturer_id'],
+            ], 201);
 
-        return response()->json([
-            'message' => 'Lecturer registered successfully',
-            'lecturer_id' => $registrationResult['lecturer_id'],
-        ], 201);
+        } catch (\Exception $e) {
+            Log::error('Lecturer Registration Failed: ' . $e->getMessage());
+
+            return response()->json([
+                'error' => 'Registration Failed',
+                'message' => $e->getMessage(),
+                'line' => $e->getLine(),
+                'file' => basename($e->getFile())
+            ], 500);
+        }
     }
 }
