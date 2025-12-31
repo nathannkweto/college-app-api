@@ -40,7 +40,6 @@ RUN chown -R www-data:www-data /var/www/html \
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 # 8. Install dependencies
-# CRITICAL FIX: Added --ignore-platform-reqs to prevent build failure
 RUN composer install --no-dev --optimize-autoloader --ignore-platform-reqs
 
 # 9. Set permissions
@@ -48,8 +47,6 @@ RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cac
 
 # 10. Configure Apache
 ENV APACHE_DOCUMENT_ROOT /var/www/html/public
-RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
-RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf
 RUN sed -i "s/80/${PORT:-8080}/g" /etc/apache2/sites-available/000-default.conf /etc/apache2/ports.conf
 
 # 11. Expose port
