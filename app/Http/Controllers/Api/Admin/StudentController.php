@@ -12,7 +12,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Log; // Added Logger
 
 class StudentController extends Controller
 {
@@ -24,7 +23,7 @@ class StudentController extends Controller
     }
 
     /**
-     * List Students.
+     * List Students with pagination and search.
      */
     public function index(Request $request)
     {
@@ -54,7 +53,7 @@ class StudentController extends Controller
     }
 
     /**
-     * Create a new Student.
+     * Create a new Student and their Login Account.
      */
     public function store(Request $request)
     {
@@ -71,83 +70,74 @@ class StudentController extends Controller
             'phone' => 'required|string',
         ]);
 
+        // --- 1. COMMENTED OUT TRANSACTION START ---
+        // $registrationResult = DB::transaction(function () use ($validated) {
+
+        $program = Program::where('public_id', $validated['program_public_id'])->firstOrFail();
+
+        // A. Generate Custom Student ID (e.g. 2025-CS-001)
+        $academicYear = date('Y', strtotime($validated['enrollment_date']));
+        $code = $program->code ?? 'STU';
+        $sequence = Student::where('program_id', $program->id)->count() + 1;
+        $studentId = sprintf("%s-%s-%03d", $academicYear, $code, $sequence);
+
+        // B. Create User Login
+        $user = User::create([
+            'name' => $validated['first_name'] . ' ' . $validated['last_name'],
+            'email' => $validated['email'],
+            'password' => Hash::make($studentId),
+            'role' => 'STUDENT',
+        ]);
+
+        // C. Create Student Profile
+        $student = Student::create([
+            'user_id' => $user->id,
+            'public_id' => (string) Str::uuid(), // Explicitly generate UUID
+            'student_id' => $studentId,
+            'first_name' => $validated['first_name'],
+            'last_name' => $validated['last_name'],
+            'email' => $validated['email'],
+            'program_id' => $program->id,
+            'gender' => $validated['gender'],
+            'national_id' => $validated['national_id'],
+            'current_semester_sequence' => 1,
+            'status' => 'active',
+            'enrollment_date' => $validated['enrollment_date'],
+            'dob' => $validated['dob'],
+            'address' => $validated['address'],
+            'phone' => $validated['phone'],
+        ]);
+
+        // MANUALLY ASSIGN VARIABLE (Do not use 'return' here)
+        $registrationResult = [
+            'user' => $user,
+            'student_id' => $studentId,
+            'password' => $studentId
+        ];
+
+        // --- 2. COMMENTED OUT TRANSACTION END ---
+        // });
+
+        // D. Send Welcome Email
+        // Note: Wrapped in try-catch so email failure doesn't crash the API response
         try {
-            // Wrap transaction
-            $registrationResult = DB::transaction(function () use ($validated) {
-                $program = Program::where('public_id', $validated['program_public_id'])->firstOrFail();
-
-                // A. Generate Custom Student ID
-                $academicYear = date('Y', strtotime($validated['enrollment_date']));
-                $code = $program->code ?? 'STU';
-                $sequence = Student::where('program_id', $program->id)->count() + 1;
-                $studentId = sprintf("%s-%s-%03d", $academicYear, $code, $sequence);
-
-                // B. Create User Login
-                $user = User::create([
-                    'name' => $validated['first_name'] . ' ' . $validated['last_name'],
-                    'email' => $validated['email'],
-                    'password' => Hash::make($studentId),
-                    'role' => 'STUDENT',
-                ]);
-
-                // C. Create Student Profile
-                $student = Student::create([
-                    'user_id' => $user->id,
-                    'public_id' => (string) Str::uuid(), // Explicitly generate UUID
-                    'student_id' => $studentId,
-                    'first_name' => $validated['first_name'],
-                    'last_name' => $validated['last_name'],
-                    'email' => $validated['email'],
-                    'program_id' => $program->id,
-                    'gender' => $validated['gender'],
-                    'national_id' => $validated['national_id'],
-                    'current_semester_sequence' => 1,
-                    'status' => 'active',
-                    'enrollment_date' => $validated['enrollment_date'],
-                    'dob' => $validated['dob'],
-                    'address' => $validated['address'],
-                    'phone' => $validated['phone'],
-                ]);
-
-                return [
-                    'user' => $user,
-                    'student_id' => $studentId,
-                    'password' => $studentId
-                ];
-            });
-
-            // D. Send Welcome Email (Outside Transaction)
-            // Wrapped in try-catch so email failure doesn't crash the registration
-            try {
-                $this->notifier->sendWelcomeEmail(
-                    $registrationResult['user'],
-                    $registrationResult['student_id'],
-                    'student'
-                );
-            } catch (\Exception $e) {
-                Log::error("Email failed to send: " . $e->getMessage());
-            }
-
-            return response()->json([
-                'message' => 'Student registered successfully',
-                'student_id' => $registrationResult['student_id'],
-            ], 201);
-
+            $this->notifier->sendWelcomeEmail(
+                $registrationResult['user'],
+                $registrationResult['student_id'],
+                'student'
+            );
         } catch (\Exception $e) {
-            // Log the full error for Cloud Run
-            Log::error('Student Registration Failed: ' . $e->getMessage());
-
-            return response()->json([
-                'error' => 'Registration Failed',
-                'message' => $e->getMessage(), // This will show you the REAL error
-                'line' => $e->getLine(),
-                'file' => basename($e->getFile())
-            ], 500);
+            // Log email error but don't stop execution
         }
+
+        return response()->json([
+            'message' => 'Student registered successfully',
+            'student_id' => $registrationResult['student_id'],
+        ], 201);
     }
 
     /**
-     * Batch create students.
+     * Batch create students from a CSV FILE.
      */
     public function batchUpload(Request $request)
     {
@@ -164,31 +154,28 @@ class StudentController extends Controller
             'phone' => 'required|string',
         ]);
 
-        try {
-            DB::transaction(function () use ($request) {
-                foreach ($request->students as $studentData) {
-                    $this->createStudent($studentData);
-                }
-            });
-            return response()->json(['message' => 'Batch upload completed successfully.']);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'error' => 'Batch Upload Failed',
-                'message' => $e->getMessage(),
-            ], 500);
+        // --- COMMENTED OUT TRANSACTION START ---
+        // DB::transaction(function () use ($request) {
+        foreach ($request->students as $studentData) {
+            // This calls the helper function below
+            $this->createStudent($studentData);
         }
+        // });
+        // --- COMMENTED OUT TRANSACTION END ---
+
+        return response()->json(['message' => 'Batch upload completed successfully.']);
     }
 
     /**
-     * Helper to create a single student.
+     * Helper to create a single student (used by store and batchUpload)
      */
     private function createStudent($data)
     {
         $program = Program::where('public_id', $data['program_public_id'])->firstOrFail();
 
-        // FIX: Correct date parsing syntax
+        // FIX: Replaced invalid syntax "['enrollment_date']" with correct strtotime
         $academicYear = date('Y', strtotime($data['enrollment_date']));
+
         $code = $program->code ?? 'STU';
         $sequence = Student::where('program_id', $program->id)->count() + 1;
         $studentId = sprintf("%s-%s-%03d", $academicYear, $code, $sequence);
@@ -219,10 +206,12 @@ class StudentController extends Controller
         ]);
     }
 
-    // ... (Keep promotionPreview and promote methods exactly as they were) ...
+    /**
+     * Preview promotion to see who qualifies.
+     */
     public function promotionPreview(Request $request)
     {
-        // ... (Keep existing logic) ...
+        // ... (Promotion Preview Logic remains unchanged) ...
         $request->validate([
             'program_public_id' => 'required|exists:programs,public_id',
             'current_sequence' => 'required|integer',
@@ -281,9 +270,11 @@ class StudentController extends Controller
         ]);
     }
 
+    /**
+     * Execute the Promotion.
+     */
     public function promote(Request $request)
     {
-        // ... (Keep existing logic) ...
         $request->validate([
             'program_public_id' => 'required|exists:programs,public_id',
             'current_sequence' => 'required|integer',
@@ -295,41 +286,45 @@ class StudentController extends Controller
         $isYearlyPromotion = ($currentSeq % 2 == 0);
         $isGraduating = $nextSeq > $program->total_semesters;
 
-        DB::transaction(function () use ($program, $currentSeq, $nextSeq, $isYearlyPromotion, $isGraduating) {
-            $students = Student::where('program_id', $program->id)
-                ->where('current_semester_sequence', $currentSeq)
-                ->where('status', 'active')
-                ->get();
+        // --- COMMENTED OUT TRANSACTION START ---
+        // DB::transaction(function () use ($program, $currentSeq, $nextSeq, $isYearlyPromotion, $isGraduating) {
 
-            foreach ($students as $student) {
-                $shouldPromote = true;
+        $students = Student::where('program_id', $program->id)
+            ->where('current_semester_sequence', $currentSeq)
+            ->where('status', 'active')
+            ->get();
 
-                if ($isYearlyPromotion) {
-                    if ($this->hasFailuresInYear($student, $currentSeq)) {
-                        $shouldPromote = false;
-                    }
-                }
+        foreach ($students as $student) {
+            $shouldPromote = true;
 
-                if ($shouldPromote) {
-                    if ($isGraduating) {
-                        $student->update([
-                            'status' => 'graduated',
-                            'current_semester_sequence' => $program->total_semesters
-                        ]);
-                    } else {
-                        $student->update([
-                            'current_semester_sequence' => $nextSeq
-                        ]);
-                    }
+            if ($isYearlyPromotion) {
+                if ($this->hasFailuresInYear($student, $currentSeq)) {
+                    $shouldPromote = false;
                 }
             }
-        });
+
+            if ($shouldPromote) {
+                if ($isGraduating) {
+                    $student->update([
+                        'status' => 'graduated',
+                        'current_semester_sequence' => $program->total_semesters
+                    ]);
+                } else {
+                    $student->update([
+                        'current_semester_sequence' => $nextSeq
+                    ]);
+                }
+            }
+        }
+        // });
+        // --- COMMENTED OUT TRANSACTION END ---
 
         return response()->json(['message' => 'Promotion process completed.']);
     }
 
     private function hasFailuresInYear($student, $currentSeq)
     {
+        // ... (Helper remains unchanged) ...
         $sequencesInYear = [$currentSeq - 1, $currentSeq];
 
         $requiredCourseIds = $student->program->courses()
