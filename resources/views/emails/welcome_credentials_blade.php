@@ -8,12 +8,11 @@
 
 <p>You have been successfully registered as a <strong>{{ ucfirst($role) }}</strong> at MATEM.</p>
 
-<p>Here are your login credentials:</p>
-
 <div style="background: #f4f4f4; padding: 15px; border-radius: 5px; display: inline-block;">
     <p><strong>{{ $role == 'student' ? 'Student ID' : 'Staff ID' }}:</strong> {{ $generatedId }}</p>
-    <p>Log in to the portal with this <strong>Password:</strong> {{ $generatedId }}</p>
 </div>
+
+<p>Use your email and ID to login to the portal</p>
 
 <p>Best Regards,<br>MATEM Administration</p>
 </body>
