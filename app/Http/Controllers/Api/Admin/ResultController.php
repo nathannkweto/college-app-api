@@ -14,87 +14,115 @@ use Illuminate\Support\Facades\DB;
 class ResultController extends Controller
 {
     /**
-     * Get pass/fail stats for a program in the active semester.
+     * Get list of students in a program with their result status.
      */
     public function programSummary(Request $request)
     {
-        $request->validate(['program_public_id' => 'required']);
+        $request->validate([
+            'program_public_id' => 'required',
+            'semester_public_id' => 'required' // Make sure this is passed
+        ]);
 
         $program = Program::where('public_id', $request->program_public_id)->firstOrFail();
-        $semester = Semester::active();
-
-        if (!$semester) return response()->json(['data' => []]);
+        $semester = Semester::where('public_id', $request->semester_public_id)->firstOrFail();
 
         // 1. Get Publication Status
         $publication = ResultPublication::where('program_id', $program->id)
             ->where('semester_id', $semester->id)
             ->first();
 
-        // 2. Aggregate Results
-        // Get all students in this program
-        $totalStudents = Student::where('program_id', $program->id)->where('status', 'active')->count();
+        // 2. Get expected course count for this program/semester
+        // Note: You need a logic to know how many courses a student *should* have taken.
+        // For simplicity, we assume the program has a defined curriculum for this semester.
+        // This is a simplified count.
+        $expectedCourseCount = $program->courses()
+            ->wherePivot('semester_sequence', 1) // Logic needs to adjust based on student year, but keeping simple for now
+            ->count();
+        if ($expectedCourseCount == 0) $expectedCourseCount = 5; // Fallback to prevent divide by zero
 
-        // Count Passed/Failed results for this semester/program combo
-        // TODO: This is a rough summary (Pass = passed all courses? or just sum of passed courses?)
-
-        $courseStats = DB::table('exam_results')
-            ->join('courses', 'exam_results.course_id', '=', 'courses.id')
-            ->select(
-                'courses.name as course_name',
-                'courses.code as course_code',
-                DB::raw('count(*) as total_attempts'),
-                DB::raw('sum(case when is_passed = 1 then 1 else 0 end) as passed_count'),
-                DB::raw('sum(case when is_passed = 0 then 1 else 0 end) as failed_count')
-            )
-            ->where('exam_results.semester_id', $semester->id)
-            ->whereIn('exam_results.student_id', function($q) use ($program) {
-                $q->select('id')->from('students')->where('program_id', $program->id);
-            })
-            ->groupBy('courses.id', 'courses.name', 'courses.code')
-            ->get();
-
-        return response()->json([
-            'program' => $program->name,
-            'semester' => $semester->academic_year,
-            'is_published' => $publication ? $publication->is_published : false,
-            'published_at' => $publication ? $publication->published_at : null,
-            'student_count' => $totalStudents,
-            'course_performance' => $courseStats
-        ]);
-    }
-
-    /**
-     * Get a specific student's full transcript.
-     */
-    public function studentTranscript(Request $request)
-    {
-        $request->validate(['student_public_id' => 'required']);
-
-        $student = Student::with('program')->where('public_id', $request->student_public_id)->firstOrFail();
-
-        $results = ExamResult::with(['course', 'semester'])
-            ->where('student_id', $student->id)
-            ->orderBy('semester_id') // Group by semester implicitly via order
+        // 3. Fetch Students with their aggregated results
+        $students = Student::where('program_id', $program->id)
+            ->where('status', 'active') // Only active students
             ->get()
-            ->map(function ($res) {
+            ->map(function ($student) use ($semester, $expectedCourseCount) {
+
+                // Fetch results for this student in this semester
+                $results = ExamResult::where('student_id', $student->id)
+                    ->where('semester_id', $semester->id)
+                    ->get();
+
+                $resultsCount = $results->count();
+                $failedCount = $results->where('is_passed', false)->count();
+                $avgScore = $resultsCount > 0 ? $results->avg('score') : 0;
+
+                // Status: Complete if they have results for at least 80% of expected courses
+                // (You can adjust this logic)
+                $status = ($resultsCount >= 1) ? 'Complete' : 'Pending';
+
+                // Decision
+                $decision = 'PROMOTED';
+                if ($failedCount > 0) $decision = 'REPEAT'; // Simple logic
+                if ($resultsCount == 0) $decision = 'NO_RESULTS';
+
                 return [
-                    'semester' => $res->semester->academic_year . ' (' . $res->semester->semester_number . ')',
-                    'course' => $res->course->name,
-                    'code' => $res->course->code,
-                    'score' => $res->score,
-                    'grade' => $res->grade,
-                    'is_passed' => $res->is_passed,
-                    'status' => $res->is_published ? 'Published' : 'Draft'
+                    'student_public_id' => $student->public_id,
+                    'student_id' => $student->student_id, // The readable ID (e.g., STU-2024-001)
+                    'first_name' => $student->first_name,
+                    'last_name' => $student->last_name,
+                    'courses_failed' => $failedCount,
+                    'average_score' => round($avgScore, 2),
+                    'semester_decision' => $decision,
+                    'status' => $status, // 'Complete' or 'Pending'
                 ];
             });
 
         return response()->json([
-            'student' => $student->first_name . ' ' . $student->last_name,
-            'program' => $student->program->name,
-            'transcript' => $results
+            'is_published' => $publication ? $publication->is_published : false,
+            'data' => $students
         ]);
     }
 
+    /**
+     * Get a specific student's transcript.
+     */
+    public function studentTranscript(Request $request)
+    {
+        $request->validate([
+            'student_public_id' => 'required',
+            'semester_public_id' => 'required'
+        ]);
+
+        $student = Student::with('program')->where('public_id', $request->student_public_id)->firstOrFail();
+        $semester = Semester::where('public_id', $request->semester_public_id)->firstOrFail();
+
+        $results = ExamResult::with(['course'])
+            ->where('student_id', $student->id)
+            ->where('semester_id', $semester->id)
+            ->get();
+
+        $gpa = $results->avg('score'); // Simplified GPA (Average Score)
+
+        $mappedResults = $results->map(function ($res) {
+            return [
+                'course_name' => $res->course->name,
+                'course_code' => $res->course->code,
+                'total_score' => $res->score,
+                'grade' => $res->grade,
+                'status' => $res->is_passed ? 'PASS' : 'FAIL',
+            ];
+        });
+
+        // Determine Academic Standing
+        $failed = $results->where('is_passed', false)->count();
+        $standing = $failed == 0 ? 'Good Standing' : 'Academic Warning';
+
+        return response()->json([
+            'student' => $student, // Returns full student object as per ref schema
+            'semester_gpa' => round($gpa, 2),
+            'academic_standing' => $standing,
+            'results' => $mappedResults
+        ]);
+    }
     /**
      * Publish results for a Program + Semester.
      */

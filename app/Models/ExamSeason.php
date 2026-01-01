@@ -10,7 +10,7 @@ class ExamSeason extends Model
     use HasPublicId;
     protected $guarded = ['id'];
 
-    protected $fillable = ['name', 'semester_id'];
+    protected $fillable = ['name', 'semester_id', 'is_active'];
 
     public function semester() {
         return $this->belongsTo(Semester::class);

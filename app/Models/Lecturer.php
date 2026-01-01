@@ -40,4 +40,8 @@ class Lecturer extends Model
             ->withPivot(['semester_id'])
             ->distinct();
     }
+    public function assignedProgramCourses()
+    {
+        return $this->hasMany(ProgramCourse::class, 'lecturer_id');
+    }
 }

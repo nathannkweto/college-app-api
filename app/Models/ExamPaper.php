@@ -11,19 +11,28 @@ class ExamPaper extends Model
     protected $guarded = ['id'];
 
     protected $fillable = [
-        'exam_season_id', 'course_id', 'date',
-        'start_time', 'duration_minutes', 'location', 'program_id'
+        'exam_season_id',
+        'program_course_id',
+        'date',
+        'start_time',
+        'duration_minutes',
+        'location'
     ];
 
     protected $casts = [
         'date' => 'date',
     ];
 
-    public function course() {
-        return $this->belongsTo(Course::class);
+    public function programCourse()
+    {
+        return $this->belongsTo(ProgramCourse::class, 'program_course_id');
     }
 
     public function examSeason() {
         return $this->belongsTo(ExamSeason::class, 'exam_season_id');
+    }
+    public function getCourseAttribute()
+    {
+        return $this->programCourse->course ?? null;
     }
 }

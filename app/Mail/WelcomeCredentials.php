@@ -23,7 +23,7 @@ class WelcomeCredentials extends Mailable
 
     public function build()
     {
-        return $this->subject("Welcome to College App - Registration Successful")
+        return $this->subject("Welcome to MATEM College of Education")
             ->view('emails.welcome_credentials');
     }
 }

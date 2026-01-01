@@ -75,13 +75,31 @@ class ProgramController extends Controller
     {
         $program = Program::where('public_id', $public_id)->firstOrFail();
 
-        $curriculum = $program->courses->map(function ($course) {
+        // 1. Get courses with the pivot data (semester_sequence, lecturer_id)
+        $courses = $program->courses;
+
+        // 2. Optimization: Fetch all involved lecturers in one query to avoid N+1 issues
+        $lecturerIds = $courses->pluck('pivot.lecturer_id')->filter()->unique();
+        $lecturers = \App\Models\Lecturer::whereIn('id', $lecturerIds)->get()->keyBy('id');
+
+        // 3. Map the response
+        $curriculum = $courses->map(function ($course) use ($lecturers) {
+            $lecturer = null;
+            if ($course->pivot->lecturer_id && isset($lecturers[$course->pivot->lecturer_id])) {
+                $l = $lecturers[$course->pivot->lecturer_id];
+                $lecturer = [
+                    'public_id' => $l->public_id,
+                    'name'      => $l->title . ' ' . $l->first_name . ' ' . $l->last_name,
+                ];
+            }
+
             return [
-                'course_public_id' => $course->public_id,
+                'public_id' => $course->public_id,
                 'name' => $course->name,
                 'code' => $course->code,
                 'pivot' => [
                     'semester_sequence' => $course->pivot->semester_sequence,
+                    'lecturer' => $lecturer, // <--- Now includes the lecturer object!
                 ],
             ];
         });
@@ -90,27 +108,37 @@ class ProgramController extends Controller
     }
 
     /**
-     * Attach a course to a program (Curriculum Builder).
+     * Attach (or Update) a course in a program.
      */
     public function attachCourse(Request $request, $public_id)
     {
         $request->validate([
             'course_public_id' => 'required|exists:courses,public_id',
-            'semester_sequence' => 'required|integer|min:1'
+            'semester_sequence' => 'required|integer|min:1',
+            'lecturer_public_id' => 'nullable|exists:lecturers,public_id' // <--- New Validation
         ]);
 
         $program = Program::where('public_id', $public_id)->firstOrFail();
         $course = Course::where('public_id', $request->course_public_id)->firstOrFail();
+
+        $lecturerId = null;
+        if ($request->filled('lecturer_public_id')) {
+            $lecturer = \App\Models\Lecturer::where('public_id', $request->lecturer_public_id)->first();
+            $lecturerId = $lecturer ? $lecturer->id : null;
+        }
 
         if ($request->semester_sequence > $program->total_semesters) {
             return response()->json(['message' => 'Semester sequence exceeds program duration.'], 422);
         }
 
         $program->courses()->syncWithoutDetaching([
-            $course->id => ['semester_sequence' => $request->semester_sequence]
+            $course->id => [
+                'semester_sequence' => $request->semester_sequence,
+                'lecturer_id' => $lecturerId
+            ]
         ]);
 
-        return response()->json(['message' => 'Course added to curriculum successfully.']);
+        return response()->json(['message' => 'Course updated in curriculum successfully.']);
     }
 
     /**

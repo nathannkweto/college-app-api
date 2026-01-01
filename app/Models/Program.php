@@ -14,13 +14,15 @@ class Program extends Model
     protected $guarded = ['id'];
     protected $fillable = [
         'name', 'code', 'total_semesters',
-        'qualification_id', 'department_id'
+        'qualification_id', 'department_id',
+        'lecturer_id'
     ];
 
     public function courses(): BelongsToMany
     {
         return $this->belongsToMany(Course::class, 'program_course')
-            ->withPivot('semester_sequence')
+            ->using(ProgramCourse::class) // <--- ADD THIS LINE
+            ->withPivot('semester_sequence', 'lecturer_id')
             ->orderByPivot('semester_sequence');
     }
 

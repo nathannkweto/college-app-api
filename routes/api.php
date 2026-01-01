@@ -93,8 +93,17 @@ Route::prefix('v1')->group(function () {
 
             // --- Exams ---
             Route::prefix('exams')->group(function () {
-                Route::post('seasons', 'ExamSeasonController@store');
-                Route::post('schedules', 'ExamScheduleController@store');
+                Route::prefix('seasons')->controller('ExamSeasonController')->group(function () {
+                    Route::get('/', 'index');
+                    Route::post('/', 'store');
+                    Route::get('active', 'active');
+                    Route::post('{public_id}/end', 'endSeason');
+                });
+
+                Route::prefix('schedules')->controller('ExamScheduleController')->group(function () {
+                    Route::get('/', 'index');
+                    Route::post('/', 'store');
+                });
             });
 
             // --- Finance ---
@@ -133,13 +142,10 @@ Route::prefix('v1')->group(function () {
 
             // --- Courses ---
             Route::controller('CourseController')->prefix('courses')->group(function () {
-                Route::get('/', 'index');                  // /lecturer/courses
-                Route::get('summary', 'summary');          // /lecturer/courses/summary
-
-                // Specific Course Actions
-                Route::get('{course_public_id}/students', 'students');
-                Route::post('{course_public_id}/grades', 'submitGrades');
+                Route::get('/', 'index');
+                Route::get('/{publicId}', 'show');
             });
+            Route::post('courses/{course_public_id}/grades', 'GradeController@store');
         });
 
 

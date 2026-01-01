@@ -15,6 +15,7 @@ return new class extends Migration
             $table->uuid('public_id')->unique();
             $table->string('name');
             $table->foreignId('semester_id')->constrained();
+            $table->boolean('is_active')->default(true);
             $table->timestamps();
         });
 
@@ -24,8 +25,7 @@ return new class extends Migration
             $table->uuid('public_id')->unique();
 
             $table->foreignId('exam_season_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('course_id')->constrained();
-            $table->foreignId('program_id')->constrained();
+            $table->foreignId('program_course_id')->constrained('program_course')->cascadeOnDelete();
 
             $table->date('date');
             $table->time('start_time');
@@ -33,6 +33,7 @@ return new class extends Migration
             $table->string('location');
 
             $table->timestamps();
+            $table->unique(['exam_season_id', 'program_course_id']);
         });
 
         // 3. Exam Results (The Grades)

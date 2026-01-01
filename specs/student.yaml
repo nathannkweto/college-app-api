@@ -1,0 +1,223 @@
+openapi: 3.0.3
+info:
+  title: Student API
+  description: API for Student functionalities.
+  version: 1.0.0
+
+servers:
+  - url: https://api.college.edu/api/v1/student
+
+paths:
+  /profile:
+    get:
+      operationId: studentProfileGet
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/StudentProfile'
+
+  /schedule:
+    get:
+      operationId: studentScheduleGet
+      parameters:
+        - name: scope
+          in: query
+          schema:
+            type: string
+            enum: [today, week]
+            default: today
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ClassSession'
+
+  /courses/current:
+    get:
+      operationId: studentCurrentCoursesGet
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CourseCompact'
+
+  /curriculum:
+    get:
+      operationId: studentCurriculumGet
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CurriculumProgress'
+
+  /exams/upcoming:
+    get:
+      operationId: studentExamsGet
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ExamEvent'
+
+  /results:
+    get:
+      operationId: studentResultsGet
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Transcript'
+
+  /finance:
+    get:
+      operationId: studentFinanceGet
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/StudentFinance'
+
+components:
+  schemas:
+    # Models remain the same as your provided spec...
+    StudentProfile:
+      type: object
+      properties:
+        student_id: { type: string }
+        first_name: { type: string }
+        last_name: { type: string }
+        email: { type: string }
+        program_name: { type: string }
+        current_semester: { type: integer }
+        avatar_url: { type: string, nullable: true }
+
+    ClassSession:
+      type: object
+      properties:
+        course_code: { type: string }
+        course_name: { type: string }
+        start_time: { type: string }
+        end_time: { type: string }
+        location: { type: string }
+        lecturer_name: { type: string }
+        color_hex: { type: string }
+
+    CourseCompact:
+      type: object
+      properties:
+        code: { type: string }
+        name: { type: string }
+
+    CurriculumProgress:
+      type: object
+      properties:
+        program_name: { type: string }
+        total_semesters: { type: integer }
+        completion_percentage: { type: number, format: float }
+        semesters:
+          type: array
+          items:
+            $ref: '#/components/schemas/CurriculumSemester'
+
+    CurriculumSemester:
+      type: object
+      properties:
+        title: { type: string }
+        is_cleared: { type: boolean }
+        is_current: { type: boolean }
+        courses:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              name: { type: string }
+              is_cleared: { type: boolean }
+
+    ExamEvent:
+      type: object
+      properties:
+        title: { type: string }
+        date: { type: string, format: date }
+        time: { type: string }
+        location: { type: string }
+
+    Transcript:
+      type: object
+      properties:
+        gpa: { type: number }
+        semesters:
+          type: array
+          items:
+            type: object
+            properties:
+              semester_name: { type: string }
+              results:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    course_name: { type: string }
+                    grade: { type: string }
+                    points: { type: number }
+
+    StudentFinance:
+      type: object
+      properties:
+        balance: { type: number }
+        currency: { type: string }
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/FinanceTransaction'
+
+    FinanceTransaction:
+      type: object
+      properties:
+        transaction_id: { type: string }
+        date: { type: string, format: date }
+        title: { type: string }
+        type: { type: string, enum: [invoice, payment] }
+        amount: { type: number }

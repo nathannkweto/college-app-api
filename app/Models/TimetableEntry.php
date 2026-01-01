@@ -11,8 +11,14 @@ class TimetableEntry extends Model
     protected $guarded = ['id'];
 
     protected $fillable = [
-        'semester_id', 'course_id', 'lecturer_id',
-        'day', 'start_time', 'end_time', 'location'
+        'semester_id',
+        'program_id', // <--- THIS IS MISSING
+        'course_id',
+        'lecturer_id',
+        'day',
+        'start_time',
+        'end_time',
+        'location',
     ];
 
     public function semester() {

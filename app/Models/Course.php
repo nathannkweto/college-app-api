@@ -22,6 +22,7 @@ class Course extends Model
     public function programs(): BelongsToMany
     {
         return $this->belongsToMany(Program::class, 'program_course')
+            ->using(ProgramCourse::class) // <--- ADD THIS LINE
             ->withPivot('semester_sequence')
             ->orderByPivot('semester_sequence');
     }

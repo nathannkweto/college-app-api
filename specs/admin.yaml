@@ -1,15 +1,15 @@
 openapi: 3.0.3
 info:
-  title: College Admin System API
+  title: Admin API
   description: Full administrative control panel for the College Management System.
   version: 1.0.0
   contact:
     name: Backend Team
 
 servers:
-  - url: https://api.college.edu/v1/admin
+  - url: https://api.college.edu/api/v1/admin
     description: Production Server
-  - url: http://localhost:8000/api/admin
+  - url: http://localhost:8000/api/v1/admin
     description: Local Development
 
 components:
@@ -20,7 +20,6 @@ components:
       bearerFormat: JWT
 
   schemas:
-
     PaginationMeta:
       type: object
       properties:
@@ -162,6 +161,12 @@ components:
           format: date
         length_weeks:
           type: integer
+
+    SemesterResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Semester'
 
     TimetableEntry:
       type: object
@@ -402,20 +407,12 @@ paths:
         "200":
           description: OK
           content:
-            {
-              application/json:
-                {
-                  schema:
-                    {
-                      type: object,
-                      properties:
-                        {
-                          data:
-                            { $ref: "#/components/schemas/DashboardMetrics" },
-                        },
-                    },
-                },
-            }
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/DashboardMetrics"
 
   /dashboard/finance:
     get:
@@ -426,20 +423,12 @@ paths:
         "200":
           description: OK
           content:
-            {
-              application/json:
-                {
-                  schema:
-                    {
-                      type: object,
-                      properties:
-                        {
-                          data:
-                            { $ref: "#/components/schemas/DashboardFinance" },
-                        },
-                    },
-                },
-            }
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/DashboardFinance"
 
   # --- ACADEMICS ---
   /departments:
@@ -452,9 +441,12 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Department"
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Department"
 
     post:
       tags: [Academics]
@@ -588,9 +580,12 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/ProgramCourse"
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ProgramCourse"
 
     post:
       tags: [Academics]
@@ -651,9 +646,12 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Course"
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Course"
 
     post:
       tags: [Academics]
@@ -827,9 +825,12 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Lecturer"
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Lecturer"
 
     post:
       tags: [Lecturers]
@@ -909,9 +910,12 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Semester"
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Semester"
 
     post:
       tags: [ Timetables ]
@@ -951,7 +955,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Semester"
+                $ref: "#/components/schemas/SemesterResponse"
         "404":
           description: None active
 
@@ -992,9 +996,12 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/TimetableEntry"
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TimetableEntry"
 
     post:
       tags: [ Timetables ]
@@ -1097,9 +1104,12 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/FinanceFee"
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FinanceFee"
 
     post:
       tags: [ Finance ]
@@ -1196,9 +1206,12 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/FinanceFee"
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FinanceFee"
 
   # --- RESULTS & PUBLISHING ---
   /results/program-summary:
@@ -1294,4 +1307,3 @@ paths:
                     type: string
                   status:
                     type: string
-

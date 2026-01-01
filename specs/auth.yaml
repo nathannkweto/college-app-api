@@ -1,0 +1,59 @@
+openapi: 3.0.3
+info:
+  title: Auth API
+  version: 1.0.0
+
+  servers:
+    - url: https://api.college.edu/api/v1/auth
+
+paths:
+  /auth/login:
+    post:
+      summary: Unified Login
+      description: Accepts credentials, returns Token + User Object.
+      operationId: login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login Successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        profile_public_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        role:
+          type: string
+          enum: [ADMIN, STUDENT, LECTURER]
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/User"

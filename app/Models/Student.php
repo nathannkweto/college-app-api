@@ -67,4 +67,10 @@ class Student extends Model
     {
         return $this->fees()->where('status', '!=', 'cleared')->sum('balance');
     }
+
+    public function scopeInClass($query, $programId, $sequence)
+    {
+        return $query->where('program_id', $programId)
+            ->where('current_semester_sequence', $sequence);
+    }
 }

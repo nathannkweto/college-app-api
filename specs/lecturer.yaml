@@ -1,0 +1,196 @@
+openapi: 3.0.3
+info:
+  title: Lecturer API
+  x-pub-name: lecturer_api
+  description: API for Lecturer functionalities.
+  version: 1.0.0
+
+servers:
+  - url: https://api.college.edu/api/v1/lecturer
+    description: Production Server
+
+paths:
+  /profile:
+    get:
+      summary: Get Lecturer Profile
+      operationId: lecturerProfileGet
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/LecturerProfile"
+
+  /schedule:
+    get:
+      summary: Get Weekly Schedule
+      operationId: lecturerScheduleGet
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DailySchedule"
+
+  /courses:
+    get:
+      summary: Get All Assigned Courses
+      operationId: lecturerCoursesGet
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CourseDetail"
+
+  /courses/summary:
+    get:
+      summary: Get Courses Summary (Dashboard)
+      operationId: lecturerCoursesSummaryGet
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CourseSummary"
+
+  /courses/{course_public_id}/students:
+    get:
+      summary: Get Enrolled Students for Grading
+      operationId: lecturerCourseStudentsGet
+      parameters:
+        - name: course_public_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StudentGradeRecord"
+
+  /courses/{course_public_id}/grades:
+    post:
+      summary: Submit Grades
+      operationId: lecturerGradesPost
+      parameters:
+        - name: course_public_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GradeSubmission"
+      responses:
+        "200":
+          description: Grades submitted successfully
+        "400":
+          description: Invalid input
+
+components:
+  schemas:
+    LecturerProfile:
+      type: object
+      properties:
+        first_name: { type: string }
+        last_name: { type: string }
+        title: { type: string }
+        department: { type: string }
+        lecturer_id: { type: string }
+        avatar_url: { type: string, nullable: true }
+
+    DailySchedule:
+      type: object
+      properties:
+        day_name:
+          type: string
+          enum: [Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday]
+        is_research_day: { type: boolean, default: false }
+        classes:
+          type: array
+          items: { $ref: "#/components/schemas/ClassSession" }
+
+    ClassSession:
+      type: object
+      properties:
+        start_time: { type: string }
+        end_time: { type: string }
+        course_code: { type: string }
+        course_name: { type: string }
+        location: { type: string }
+        color_hex: { type: string }
+
+    CourseSummary:
+      type: object
+      properties:
+        course_code: { type: string }
+        course_name: { type: string }
+        student_count: { type: integer }
+
+    CourseDetail:
+      allOf:
+        - $ref: "#/components/schemas/CourseSummary"
+        - type: object
+          properties:
+            semester: { type: string }
+            credit_hours: { type: integer }
+            description: { type: string }
+
+    StudentGradeRecord:
+      type: object
+      properties:
+        student_public_id: { type: string, format: uuid }
+        student_id: { type: string }
+        first_name: { type: string }
+        last_name: { type: string }
+        current_score: { type: number, nullable: true }
+
+    GradeSubmission:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [draft, published]
+        grades:
+          type: array
+          items:
+            type: object
+            properties:
+              student_public_id: { type: string, format: uuid }
+              score: { type: number }

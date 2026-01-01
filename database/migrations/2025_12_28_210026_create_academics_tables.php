@@ -58,6 +58,11 @@ return new class extends Migration
             $table->foreignId('program_id')->constrained()->cascadeOnDelete();
             $table->foreignId('course_id')->constrained()->cascadeOnDelete();
 
+            $table->foreignId('lecturer_id')
+                ->nullable()
+                ->constrained('lecturers')
+                ->nullOnDelete();
+
             $table->integer('semester_sequence');
 
             $table->unique(['program_id', 'course_id']);
