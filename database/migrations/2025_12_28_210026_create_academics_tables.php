@@ -52,26 +52,10 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        // 5. PROGRAM_COURSE
-        Schema::create('program_course', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('program_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('course_id')->constrained()->cascadeOnDelete();
-
-            $table->foreignId('lecturer_id')
-                ->nullable()
-                ->constrained('lecturers')
-                ->nullOnDelete();
-
-            $table->integer('semester_sequence');
-
-            $table->unique(['program_id', 'course_id']);
-        });
     }
 
     public function down()
     {
-        Schema::dropIfExists('program_course');
         Schema::dropIfExists('courses');
         Schema::dropIfExists('programs');
         Schema::dropIfExists('qualifications');
