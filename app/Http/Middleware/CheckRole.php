@@ -15,14 +15,8 @@ class CheckRole
      */
     public function handle(Request $request, Closure $next, string $role): Response
     {
-        // 1. Ensure user is logged in
-        if (! $request->user()) {
-            return response()->json(['message' => 'Unauthenticated.'], 401);
-        }
-
-        // 2. Check if the user's role matches the required role
         if ($request->user()->role !== $role) {
-            return response()->json(['message' => 'Forbidden. Access denied.'], 403);
+            return response()->json(['message' => 'Forbidden.'], 403);
         }
 
         return $next($request);

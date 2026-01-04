@@ -12,7 +12,7 @@
     <p><strong>{{ $role == 'student' ? 'Student ID' : 'Staff ID' }}:</strong> {{ $generatedId }}</p>
 </div>
 
-<p>Use your email and ID-as-password to login to the portal</p>
+<p>Use your email and ID-as-password to login to the portal through this <a href="https://matemcollege.com/">link</a>.</p>
 
 <p>Best Regards,<br>MATEM Administration</p>
 </body>

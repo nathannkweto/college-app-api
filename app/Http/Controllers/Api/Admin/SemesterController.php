@@ -34,14 +34,25 @@ class SemesterController extends Controller
 
     public function index()
     {
+        // FIX: Match the snake_case keys expected by the Flutter admin_api
         $semesters = Semester::orderBy('start_date', 'desc')->get()->map(function($s) {
             return [
-                'public_id'      => $s->public_id,
-                'academicYear'   => $s->academic_year,
-                'semesterNumber' => "number" . $s->semester_number,
-                'startDate'      => $s->start_date->toIso8601String(),
-                'lengthWeeks'    => (int) $s->length_weeks,
-                'isActive'       => (bool) $s->is_active,
+                'public_id'       => $s->public_id,
+
+                // Changed from 'academicYear' to 'academic_year'
+                'academic_year'   => $s->academic_year,
+
+                // Changed from "number".$n to raw integer, and key to 'semester_number'
+                'semester_number' => (int) $s->semester_number,
+
+                // Changed from 'startDate' to 'start_date' and generic string format
+                'start_date'      => $s->start_date->format('Y-m-d'),
+
+                // Changed from 'lengthWeeks' to 'length_weeks'
+                'length_weeks'    => (int) $s->length_weeks,
+
+                // Changed from 'isActive' to 'is_active'
+                'is_active'       => (bool) $s->is_active,
             ];
         });
 

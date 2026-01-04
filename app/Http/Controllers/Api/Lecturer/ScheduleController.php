@@ -31,11 +31,18 @@ class ScheduleController extends Controller
             ->orderBy('start_time')
             ->get();
 
-        $days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-
+        $dayMapping = [
+            'MON' => 'Monday',
+            'TUE' => 'Tuesday',
+            'WED' => 'Wednesday',
+            'THU' => 'Thursday',
+            'FRI' => 'Friday',
+            'SAT' => 'Saturday',
+            'SUN' => 'Sunday',
+        ];
         // ADDED: 'use ($scheduleData)' allows the closure to access the results
-        $formattedSchedule = collect($days)->map(function ($day) use ($scheduleData) {
-            $classesForDay = $scheduleData->where('day', $day)->map(function ($entry) {
+        $formattedSchedule = collect($dayMapping)->map(function ($dayName, $shortCode) use ($scheduleData) {
+            $classesForDay = $scheduleData->where('day', $shortCode)->map(function ($entry) {
                 return [
                     'start_time' => $this->formatTime($entry->start_time),
                     'end_time'   => $this->formatTime($entry->end_time),
@@ -47,7 +54,7 @@ class ScheduleController extends Controller
             })->values();
 
             return [
-                'day_name' => $day,
+                'day_name' => $dayName,
                 'is_research_day' => $classesForDay->isEmpty(),
                 'classes' => $classesForDay
             ];

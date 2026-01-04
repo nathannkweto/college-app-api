@@ -48,11 +48,35 @@ class FinanceController extends Controller
             ->firstOrFail();
 
         // 2. Get fees for this student, ordered by due date
-        $fees = FinanceFee::where('student_id', $student->id)
+        $fees = FinanceFee::with('student.program') // Eager load to be safe
+        ->where('student_id', $student->id)
             ->orderBy('due_date', 'asc')
-            ->get();
+            ->get()
+            ->map(function ($fee) {
+                return [
+                    'public_id'    => $fee->public_id,
+                    // The Spec expects a 'student' object inside
+                    'student'      => [
+                        'public_id'  => $fee->student->public_id,
+                        'student_id' => $fee->student->student_id,
+                        'first_name' => $fee->student->first_name,
+                        'last_name'  => $fee->student->last_name,
+                        'email'      => $fee->student->email,
+                        'program'    => [
+                            'name' => $fee->student->program->name ?? 'N/A',
+                            'code' => $fee->student->program->code ?? '',
+                        ]
+                    ],
+                    'title'        => $fee->title,
+                    'total_amount' => (float) $fee->total_amount, // Cast to ensure double
+                    'balance'      => (float) $fee->balance,
+                    'status'       => $fee->balance <= 0 ? 'cleared' : ($fee->balance < $fee->total_amount ? 'partial' : 'pending'),
+                    'due_date'     => $fee->due_date ? $fee->due_date->format('Y-m-d') : null,
+                ];
+            });
 
-        return response()->json($fees);
+        // 3. IMPORTANT: Wrap in 'data' to match OpenAPI "FinanceFeesGet200Response"
+        return response()->json(['data' => $fees]);
     }
 
     /**

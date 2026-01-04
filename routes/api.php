@@ -176,4 +176,4 @@ Route::prefix('v1')->group(function () {
 
     }); // End Middleware Auth
 
-}); // End Prefix v1
+});

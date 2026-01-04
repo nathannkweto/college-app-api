@@ -16,6 +16,7 @@ class ExamResult extends Model
 
     protected $casts = [
         'is_passed' => 'boolean',
+        'is_published' => 'boolean',
     ];
 
     public function student() {
