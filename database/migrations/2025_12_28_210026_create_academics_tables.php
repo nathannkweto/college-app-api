@@ -55,10 +55,29 @@ return new class extends Migration
             $table->timestamps();
         });
 
+        // 1. Semesters (Global Time)
+        Schema::create('semesters', function (Blueprint $table) {
+            $table->id();
+            $table->uuid('public_id')->unique();
+
+            $table->string('academic_year'); // e.g., "2025-2026"
+            $table->integer('semester_number'); // e.g., 1 or 2
+
+            $table->boolean('is_active')->default(true);
+
+            $table->date('start_date');
+            $table->integer('length_weeks');
+
+            $table->timestamps();
+
+            $table->unique(['academic_year', 'semester_number']);
+        });
+
     }
 
     public function down()
     {
+        Schema::dropIfExists('semesters');
         Schema::dropIfExists('courses');
         Schema::dropIfExists('programs');
         Schema::dropIfExists('qualifications');

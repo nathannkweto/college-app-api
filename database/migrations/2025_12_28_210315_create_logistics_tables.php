@@ -9,24 +9,6 @@ return new class extends Migration
     public $withinTransaction = false;
     public function up()
     {
-        // 1. Semesters (Global Time)
-        Schema::create('semesters', function (Blueprint $table) {
-            $table->id();
-            $table->uuid('public_id')->unique();
-
-            $table->string('academic_year'); // e.g., "2025-2026"
-            $table->integer('semester_number'); // e.g., 1 or 2
-
-            $table->boolean('is_active')->default(true);
-
-            $table->date('start_date');
-            $table->integer('length_weeks');
-
-            $table->timestamps();
-
-            $table->unique(['academic_year', 'semester_number']);
-        });
-
         // 2. Timetable Entries
         Schema::create('timetable_entries', function (Blueprint $table) {
             $table->id();
@@ -50,6 +32,5 @@ return new class extends Migration
     public function down()
     {
         Schema::dropIfExists('timetable_entries');
-        Schema::dropIfExists('semesters');
     }
 };
