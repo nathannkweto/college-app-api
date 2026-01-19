@@ -41,7 +41,7 @@ class ResultController extends Controller
                 // We match the semester string (e.g. "2024-2025 Semester 1") if that's how it's stored,
                 // or use a scope if you added semester_id to enrollments.
                 $enrollments = Enrollment::where('student_id', $student->id)
-                    ->where('semester', $semester->name) // Assuming 'semester' column is the string name
+                    ->where('semester_id', $semester->id) // Assuming 'semester' column is the string name
                     ->get();
 
                 $resultsCount = $enrollments->count();
