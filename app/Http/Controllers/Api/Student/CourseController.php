@@ -19,7 +19,7 @@ class CourseController extends Controller
 
         // 1. Find the currently active semester
         // We assume there is only one active semester at a time
-        $activeSemester = Semester::where('is_active', true)->first();
+        $activeSemester = Semester::where('is_active', 'true')->first();
 
         // If no semester is running, the student has no active courses
         if (!$activeSemester) {

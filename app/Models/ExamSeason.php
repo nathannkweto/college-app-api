@@ -19,4 +19,10 @@ class ExamSeason extends Model
     public function papers() {
         return $this->hasMany(ExamPaper::class);
     }
+
+    public function scopeActive($query)
+    {
+        // We handle the "String Literal" requirement here, once, forever.
+        return $query->where('is_active', 'true');
+    }
 }

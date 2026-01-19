@@ -17,7 +17,7 @@ class SemesterController extends Controller
      */
     public function active()
     {
-        $semester = Semester::where('is_active', true)->first();
+        $semester = Semester::where('is_active', 'true')->first();
 
         if (!$semester) {
             return response()->json(['data' => null]);
@@ -68,7 +68,7 @@ class SemesterController extends Controller
         // 1. Create Semester
         $semester = \DB::transaction(function () use ($request, $validated) {
             if ($request->is_active) {
-                Semester::where('is_active', true)->update(['is_active' => false]);
+                Semester::where('is_active', 'true')->update(['is_active' => 'false']);
             }
             return Semester::create($validated);
         });

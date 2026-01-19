@@ -23,7 +23,7 @@ class Semester extends Model
     // Helper to find the active semester
     public static function active()
     {
-        return self::where('is_active', true)->first();
+        return self::where('is_active', 'true')->first();
     }
 
     public function examSeasons()
