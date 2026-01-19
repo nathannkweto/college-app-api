@@ -23,7 +23,7 @@ return new class extends Migration
             $table->id();
 
             $table->foreignId('exam_season_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('program_course_id')->constrained('program_course')->cascadeOnDelete();
+            $table->foreignId('program_course_id')->constrained('program_courses')->cascadeOnDelete();
 
             $table->date('date');
             $table->time('start_time');
