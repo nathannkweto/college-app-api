@@ -111,7 +111,7 @@ return [
     */
 
     'batching' => [
-        'database' => env('DB_CONNECTION', 'sqlite'),
+        'database' => env('pgsql_batches', 'sqlite'),
         'table' => 'job_batches',
     ],
 
