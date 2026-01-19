@@ -18,8 +18,9 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
         $middleware->prepend(\Illuminate\Http\Middleware\HandleCors::class);
         $middleware->validateCsrfTokens(except: [
-            '/_google-cloud-tasks/*' // The package uses this route structure
+            '/_google-cloud-tasks/*'
         ]);
+        $middleware->trustProxies(at: '*');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
