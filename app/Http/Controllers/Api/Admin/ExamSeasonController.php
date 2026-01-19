@@ -42,7 +42,7 @@ class ExamSeasonController extends Controller
     public function active()
     {
         // Find the first active season
-        $season = ExamSeason::where('is_active', 'true')
+        $season = ExamSeason::where('is_active', true)
             ->with('semester')
             ->first();
 
@@ -54,7 +54,7 @@ class ExamSeasonController extends Controller
             'data' => [
                 'public_id' => $season->public_id,
                 'name' => $season->name,
-                'is_active' => 'true',
+                'is_active' => true,
                 'semester' => [
                     'public_id' => $season->semester->public_id,
                     'semester_number' => $season->semester->semester_number,
@@ -79,7 +79,7 @@ class ExamSeasonController extends Controller
         // LOGIC CHECK:
         // Usually, you only want ONE active exam season at a time.
         // We should deactivate any currently active seasons before starting a new one.
-        ExamSeason::where('is_active', 'true')->update(['is_active' => 'false']);
+        ExamSeason::where('is_active', true)->update(['is_active' => false]);
 
         // Create the new season (Default migration sets is_active = true)
         // Assuming HasPublicId trait handles the UUID generation automatically.

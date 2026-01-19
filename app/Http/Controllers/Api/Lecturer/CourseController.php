@@ -25,7 +25,7 @@ class CourseController extends Controller
         }
 
         // 1. Get the Active Semester
-        $activeSemester = Semester::where('is_active', 'true')->first();
+        $activeSemester = Semester::where('is_active', true)->first();
 
         if (!$activeSemester) {
             return response()->json(['message' => 'No active semester found'], 404);
@@ -81,7 +81,7 @@ class CourseController extends Controller
         }
 
         // 1. Validate Semester
-        $activeSemester = Semester::where('is_active', 'true')->first();
+        $activeSemester = Semester::where('is_active', true)->first();
         if (!$activeSemester) abort(404, 'No active semester');
 
         // 2. Find the specific assignment (ProgramCourse pivot)

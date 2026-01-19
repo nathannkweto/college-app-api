@@ -20,7 +20,7 @@ class ScheduleController extends Controller
         }
 
         // 2. Resolve Active Semester
-        $activeSemester = Semester::where('is_active', 'true')->first();
+        $activeSemester = Semester::where('is_active', true)->first();
         if (!$activeSemester) {
             return response()->json(['data' => []]);
         }

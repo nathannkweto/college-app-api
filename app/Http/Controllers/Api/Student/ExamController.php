@@ -33,7 +33,7 @@ class ExamController extends Controller
         // 3. Get the Active Exam Season for this Semester
         // We only want to show exams if the season is actually declared/active
         $activeSeason = ExamSeason::where('semester_id', $activeSemester->id)
-            ->where('is_active', 'true')
+            ->where('is_active', true)
             ->first();
 
         if (!$activeSeason) {

@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Database\NeonPostgresConnection;
+use Illuminate\Database\Connection;
 use Illuminate\Support\ServiceProvider;
 use Stackkit\LaravelGoogleCloudTasksQueue\CloudTasksServiceProvider;
 
@@ -25,5 +27,8 @@ class AppServiceProvider extends ServiceProvider
         if ($this->app->environment('production')) {
             \Illuminate\Support\Facades\URL::forceScheme('https');
         }
+        Connection::resolverFor('pgsql', function ($connection, $database, $prefix, $config) {
+            return new NeonPostgresConnection($connection, $database, $prefix, $config);
+        });
     }
 }
