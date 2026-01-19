@@ -40,12 +40,10 @@ class RegisterStudent implements ShouldQueue
             return;
         }
 
-        // 2. Fetch Program OUTSIDE the transaction first to ensure it exists.
-        // This validates the data before we ever touch a transaction.
+        // 2. Fetch Program OUTSIDE transaction
         $program = Program::where('code', $this->data['program_code'])->first();
 
         if (!$program) {
-            // Fails the job clearly without db errors
             $this->fail(new \Exception("Program {$this->data['program_code']} not found"));
             return;
         }
@@ -53,17 +51,15 @@ class RegisterStudent implements ShouldQueue
         $user = null;
         $studentId = null;
 
-        // 3. Start Transaction
         DB::transaction(function () use ($program, &$user, &$studentId) {
 
-            // 4. THE FIX: Use Postgres Advisory Lock.
-            // We lock based on the Program ID.
-            // 'pg_advisory_xact_lock' automatically releases when this transaction commits or rolls back.
-            // hashtext() turns the string key into the required integer for the lock.
+            // 3. THE FIX: Use selectOne instead of statement.
+            // DB::statement causes issues with SELECT queries (even locks) because it ignores results.
+            // selectOne ensures the query is fully executed and the connection is clean.
             $lockKey = "student_registration_lock_" . $program->id;
-            DB::statement("SELECT pg_advisory_xact_lock(hashtext(?))", [$lockKey]);
+            DB::selectOne("SELECT pg_advisory_xact_lock(hashtext(?))", [$lockKey]);
 
-            // 5. ID Generation (Safe because we hold the advisory lock)
+            // 4. Generate ID
             $academicYear = date('Y', strtotime($this->data['enrollment_date']));
             $code = $program->code ?? 'STU';
 
@@ -75,7 +71,7 @@ class RegisterStudent implements ShouldQueue
                 $studentId = sprintf("%s-%s-%03d", $academicYear, $code, $sequence);
             }
 
-            // 6. Create User
+            // 5. Create User
             $user = User::firstOrCreate(
                 ['email' => $this->data['email']],
                 [
@@ -85,7 +81,7 @@ class RegisterStudent implements ShouldQueue
                 ]
             );
 
-            // 7. Create Student
+            // 6. Create Student
             Student::create(
                 [
                     'email' => $this->data['email'],
@@ -93,7 +89,6 @@ class RegisterStudent implements ShouldQueue
                     'public_id' => (string) Str::uuid(),
                     'program_id' => $program->id,
                     'student_id' => $studentId,
-
                     'first_name' => $this->data['first_name'],
                     'last_name' => $this->data['last_name'],
                     'national_id' => $this->data['nrc_number'],
@@ -108,13 +103,8 @@ class RegisterStudent implements ShouldQueue
             );
         });
 
-        // 8. Send Email
         if ($user && $studentId) {
-            $notifier->sendWelcomeEmail(
-                $user,
-                $studentId,
-                'student'
-            );
+            $notifier->sendWelcomeEmail($user, $studentId, 'student');
         }
     }
 }

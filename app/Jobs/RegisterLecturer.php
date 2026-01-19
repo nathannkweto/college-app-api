@@ -31,7 +31,6 @@ class RegisterLecturer implements ShouldQueue
     {
         if ($this->batch()?->cancelled()) return;
 
-        // 1. Check existence first
         $exists = Lecturer::where('email', $this->data['email'])
             ->orWhere('national_id', $this->data['nrc_number'])
             ->exists();
@@ -40,8 +39,6 @@ class RegisterLecturer implements ShouldQueue
             return;
         }
 
-        // 2. Fetch Department OUTSIDE the transaction.
-        // This validates the data safely before we start any DB locks.
         $department = Department::where('code', $this->data['department_code'])->first();
 
         if (!$department) {
@@ -52,15 +49,12 @@ class RegisterLecturer implements ShouldQueue
         $user = null;
         $lecturerId = null;
 
-        // 3. Start Transaction
         DB::transaction(function () use ($department, &$user, &$lecturerId) {
 
-            // 4. THE FIX: Use Postgres Advisory Lock.
-            // We lock based on the Department ID so only one lecturer ID is generated per department at a time.
+            // FIX: Use selectOne to cleanly execute the lock
             $lockKey = "lecturer_registration_lock_" . $department->id;
-            DB::statement("SELECT pg_advisory_xact_lock(hashtext(?))", [$lockKey]);
+            DB::selectOne("SELECT pg_advisory_xact_lock(hashtext(?))", [$lockKey]);
 
-            // 5. ID Generation (Safe because we hold the advisory lock)
             $prefix = "LEC";
             $deptCode = $department->code ?? 'GEN';
 
@@ -72,7 +66,6 @@ class RegisterLecturer implements ShouldQueue
                 $lecturerId = sprintf("%s-%s-%03d", $prefix, $deptCode, $sequence);
             }
 
-            // 6. Create User
             $user = User::firstOrCreate(
                 ['email' => $this->data['email']],
                 [
@@ -82,7 +75,6 @@ class RegisterLecturer implements ShouldQueue
                 ]
             );
 
-            // 7. Create Lecturer
             Lecturer::create(
                 [
                     'email' => $this->data['email'],
@@ -90,7 +82,6 @@ class RegisterLecturer implements ShouldQueue
                     'public_id' => (string) Str::uuid(),
                     'department_id' => $department->id,
                     'lecturer_id' => $lecturerId,
-
                     'first_name' => $this->data['first_name'],
                     'last_name' => $this->data['last_name'],
                     'national_id' => $this->data['nrc_number'],
@@ -103,13 +94,8 @@ class RegisterLecturer implements ShouldQueue
             );
         });
 
-        // 8. Send Email
         if ($user && $lecturerId) {
-            $notifier->sendWelcomeEmail(
-                $user,
-                $lecturerId,
-                'lecturer'
-            );
+            $notifier->sendWelcomeEmail($user, $lecturerId, 'lecturer');
         }
     }
 }
