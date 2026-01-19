@@ -35,4 +35,10 @@ class Semester extends Model
     {
         return $this->hasMany(TimetableEntry::class);
     }
+
+    public function scopeActive($query)
+    {
+        // We handle the "String Literal" requirement here, once, forever.
+        return $query->where('is_active', 'true');
+    }
 }

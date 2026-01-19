@@ -48,7 +48,7 @@ class DashboardController extends Controller
         $netBalance = $totalIncome - $totalExpenses;
 
         // 2. Get Active Semester Name for display
-        $activeSemester = Semester::where('is_active', true)->first();
+        $activeSemester = Semester::where('is_active', 'true')->first();
 
         $semesterName = $activeSemester
             ? "{$activeSemester->academic_year} (Sem {$activeSemester->semester_number})"
