@@ -95,7 +95,12 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'search_path' => 'public',
-            'sslmode' => 'prefer',
+            'sslmode' => 'require',
+            'options' => [
+                // This stops Laravel from sending "PREPARE" commands to Neon/PgBouncer.
+                // It fixes the "Transaction Aborted" errors immediately.
+                PDO::ATTR_EMULATE_PREPARES => true,
+            ],
         ],
 
         'pgsql_batches' => [
@@ -110,7 +115,12 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'search_path' => 'public',
-            'sslmode' => 'prefer',
+            'sslmode' => 'require',
+            'options' => [
+                // This stops Laravel from sending "PREPARE" commands to Neon/PgBouncer.
+                // It fixes the "Transaction Aborted" errors immediately.
+                PDO::ATTR_EMULATE_PREPARES => true,
+            ],
         ],
 
         'sqlsrv' => [
