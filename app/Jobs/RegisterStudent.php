@@ -31,7 +31,7 @@ class RegisterStudent implements ShouldQueue
     {
         if ($this->batch()?->cancelled()) return;
 
-        // 1. Check existence first (Read-only, safe outside transaction)
+        // 1. Check existence first
         $exists = Student::where('email', $this->data['email'])
             ->orWhere('national_id', $this->data['nrc_number'])
             ->exists();
@@ -40,39 +40,42 @@ class RegisterStudent implements ShouldQueue
             return;
         }
 
+        // 2. Fetch Program OUTSIDE the transaction first to ensure it exists.
+        // This validates the data before we ever touch a transaction.
+        $program = Program::where('code', $this->data['program_code'])->first();
+
+        if (!$program) {
+            // Fails the job clearly without db errors
+            $this->fail(new \Exception("Program {$this->data['program_code']} not found"));
+            return;
+        }
+
         $user = null;
         $studentId = null;
 
-        // 2. Start the Transaction immediately. No Cache::lock.
-        DB::transaction(function () use (&$user, &$studentId) {
+        // 3. Start Transaction
+        DB::transaction(function () use ($program, &$user, &$studentId) {
 
-            // 3. THE FIX: Fetch the Program INSIDE the transaction using lockForUpdate().
-            // This creates a database-level lock on this specific Program row.
-            // Other workers for this same program will pause here until this transaction commits.
-            $program = Program::where('code', $this->data['program_code'])
-                ->lockForUpdate()
-                ->first();
+            // 4. THE FIX: Use Postgres Advisory Lock.
+            // We lock based on the Program ID.
+            // 'pg_advisory_xact_lock' automatically releases when this transaction commits or rolls back.
+            // hashtext() turns the string key into the required integer for the lock.
+            $lockKey = "student_registration_lock_" . $program->id;
+            DB::statement("SELECT pg_advisory_xact_lock(hashtext(?))", [$lockKey]);
 
-            if (!$program) {
-                // Throwing inside a transaction auto-rollbacks
-                throw new \Exception("Program {$this->data['program_code']} not found");
-            }
-
-            // 4. ID Generation Logic
-            // Because we hold the lock on $program, we are guaranteed to be the only one counting right now.
+            // 5. ID Generation (Safe because we hold the advisory lock)
             $academicYear = date('Y', strtotime($this->data['enrollment_date']));
             $code = $program->code ?? 'STU';
 
             $sequence = Student::where('program_id', $program->id)->count() + 1;
             $studentId = sprintf("%s-%s-%03d", $academicYear, $code, $sequence);
 
-            // Double check (Fail-safe)
             while(Student::where('student_id', $studentId)->exists()) {
                 $sequence++;
                 $studentId = sprintf("%s-%s-%03d", $academicYear, $code, $sequence);
             }
 
-            // 5. Create User
+            // 6. Create User
             $user = User::firstOrCreate(
                 ['email' => $this->data['email']],
                 [
@@ -82,7 +85,7 @@ class RegisterStudent implements ShouldQueue
                 ]
             );
 
-            // 6. Create Student
+            // 7. Create Student
             Student::create(
                 [
                     'email' => $this->data['email'],
@@ -105,7 +108,7 @@ class RegisterStudent implements ShouldQueue
             );
         });
 
-        // 7. Send Email
+        // 8. Send Email
         if ($user && $studentId) {
             $notifier->sendWelcomeEmail(
                 $user,

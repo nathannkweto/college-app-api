@@ -31,6 +31,7 @@ class RegisterLecturer implements ShouldQueue
     {
         if ($this->batch()?->cancelled()) return;
 
+        // 1. Check existence first
         $exists = Lecturer::where('email', $this->data['email'])
             ->orWhere('national_id', $this->data['nrc_number'])
             ->exists();
@@ -39,23 +40,27 @@ class RegisterLecturer implements ShouldQueue
             return;
         }
 
+        // 2. Fetch Department OUTSIDE the transaction.
+        // This validates the data safely before we start any DB locks.
+        $department = Department::where('code', $this->data['department_code'])->first();
+
+        if (!$department) {
+            $this->fail(new \Exception("Department {$this->data['department_code']} not found"));
+            return;
+        }
+
         $user = null;
         $lecturerId = null;
 
-        // 1. Transaction Starts
-        DB::transaction(function () use (&$user, &$lecturerId) {
+        // 3. Start Transaction
+        DB::transaction(function () use ($department, &$user, &$lecturerId) {
 
-            // 2. THE FIX: Lock the Department row.
-            // This forces other workers to wait before generating an ID for this department.
-            $department = Department::where('code', $this->data['department_code'])
-                ->lockForUpdate()
-                ->first();
+            // 4. THE FIX: Use Postgres Advisory Lock.
+            // We lock based on the Department ID so only one lecturer ID is generated per department at a time.
+            $lockKey = "lecturer_registration_lock_" . $department->id;
+            DB::statement("SELECT pg_advisory_xact_lock(hashtext(?))", [$lockKey]);
 
-            if (!$department) {
-                throw new \Exception("Department {$this->data['department_code']} not found");
-            }
-
-            // 3. ID Generation (Safe because we hold the lock)
+            // 5. ID Generation (Safe because we hold the advisory lock)
             $prefix = "LEC";
             $deptCode = $department->code ?? 'GEN';
 
@@ -67,7 +72,7 @@ class RegisterLecturer implements ShouldQueue
                 $lecturerId = sprintf("%s-%s-%03d", $prefix, $deptCode, $sequence);
             }
 
-            // 4. Create User
+            // 6. Create User
             $user = User::firstOrCreate(
                 ['email' => $this->data['email']],
                 [
@@ -77,7 +82,7 @@ class RegisterLecturer implements ShouldQueue
                 ]
             );
 
-            // 5. Create Lecturer
+            // 7. Create Lecturer
             Lecturer::create(
                 [
                     'email' => $this->data['email'],
@@ -98,7 +103,7 @@ class RegisterLecturer implements ShouldQueue
             );
         });
 
-        // 6. Send Email
+        // 8. Send Email
         if ($user && $lecturerId) {
             $notifier->sendWelcomeEmail(
                 $user,
