@@ -30,7 +30,7 @@ class RegisterLecturer implements ShouldQueue
 
     public function handle(NotificationService $notifier)
     {
-        // 1. Safety Check: Use '?->' because batch() is null if run individually
+        // 1. Safety Check
         if ($this->batch()?->cancelled()) return;
 
         $exists = Lecturer::where('email', $this->data['email'])
@@ -41,69 +41,70 @@ class RegisterLecturer implements ShouldQueue
             return;
         }
 
-        $user = null;
-        $lecturerId = null;
-
         $department = Department::where('code', $this->data['department_code'])->first();
         if (!$department) {
-            // Fails the job so you see it in "failed_jobs" table
             $this->fail(new \Exception("Department {$this->data['department_code']} not found"));
             return;
         }
 
-        // 2. Pass variables into the closure.
-        DB::transaction(function () use ($department, &$user, &$lecturerId) {
+        $user = null;
+        $lecturerId = null;
 
-            // 3. CRITICAL: Atomic Lock prevents duplicate IDs during bulk import
-            // This forces workers to queue up for 5 seconds to generate IDs one by one
-            Cache::lock('lecturer_id_gen_' . $department->id, 5)->block(5, function () use ($department, &$lecturerId) {
+        // 2. FIX: The Lock is now the OUTER wrapper.
+        // This prevents the "Transaction Aborted" error when using the Database Cache Driver.
+        // It also ensures better data integrity (Race Conditions are blocked before the Transaction starts).
+        Cache::lock('lecturer_id_gen_' . $department->id, 10)->block(10, function () use ($department, &$user, &$lecturerId) {
+
+            // 3. FIX: The Transaction is now the INNER wrapper.
+            DB::transaction(function () use ($department, &$user, &$lecturerId) {
 
                 $prefix = "LEC";
                 $deptCode = $department->code ?? 'GEN';
 
-                // Now safely count
+                // Safely count inside the lock
                 $sequence = Lecturer::where('department_id', $department->id)->count() + 1;
                 $lecturerId = sprintf("%s-%s-%03d", $prefix, $deptCode, $sequence);
 
-                // Double check for safety
-                while(Lecturer::where('student_id', $lecturerId)->exists()) {
+                // Double check for duplicates
+                // note: Changed 'student_id' to 'lecturer_id' to match your table schema below
+                while(Lecturer::where('lecturer_id', $lecturerId)->exists()) {
                     $sequence++;
                     $lecturerId = sprintf("%s-%s-%03d", $prefix, $deptCode, $sequence);
                 }
+
+                // Create User
+                $user = User::firstOrCreate(
+                    ['email' => $this->data['email']],
+                    [
+                        'name' => $this->data['first_name'] . ' ' . $this->data['last_name'],
+                        'password' => Hash::make($lecturerId),
+                        'role' => 'LECTURER',
+                    ]
+                );
+
+                // Create Lecturer
+                Lecturer::create(
+                    [
+                        'email' => $this->data['email'],
+                        'user_id' => $user->id,
+                        'public_id' => (string) Str::uuid(),
+                        'department_id' => $department->id,
+                        'lecturer_id' => $lecturerId, // Using the generated ID
+
+                        'first_name' => $this->data['first_name'],
+                        'last_name' => $this->data['last_name'],
+                        'national_id' => $this->data['nrc_number'],
+                        'gender' => $this->data['gender'],
+                        'dob' => $this->data['date_of_birth'],
+                        'address' => $this->data['address'],
+                        'phone' => $this->data['phone_number'],
+                        'title' => $this->data['title'],
+                    ]
+                );
             });
-
-            // Create User
-            $user = User::firstOrCreate(
-                ['email' => $this->data['email']],
-                [
-                    'name' => $this->data['first_name'] . ' ' . $this->data['last_name'],
-                    'password' => Hash::make($lecturerId),
-                    'role' => 'LECTURER',
-                ]
-            );
-
-            // Create Lecturer
-            Lecturer::create(
-                [
-                    'email' => $this->data['email'],
-                    'user_id' => $user->id,
-                    'public_id' => (string) Str::uuid(),
-                    'department_id' => $department->id,
-                    'lecturer_id' => $lecturerId,
-
-                    'first_name' => $this->data['first_name'],
-                    'last_name' => $this->data['last_name'],
-                    'national_id' => $this->data['nrc_number'],
-                    'gender' => $this->data['gender'],
-                    'dob' => $this->data['date_of_birth'],
-                    'address' => $this->data['address'],
-                    'phone' => $this->data['phone_number'],
-                    'title' => $this->data['title'],
-                ]
-            );
         });
 
-        // 4. Send Email
+        // 4. Send Email (Happens only if Lock & Transaction succeeded)
         if ($user && $lecturerId) {
             $notifier->sendWelcomeEmail(
                 $user,

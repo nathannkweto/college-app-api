@@ -30,7 +30,7 @@ class RegisterStudent implements ShouldQueue
 
     public function handle(NotificationService $notifier)
     {
-        // 1. Safety Check: Use '?->' because batch() is null if run individually
+        // 1. Safety Check
         if ($this->batch()?->cancelled()) return;
 
         $exists = Student::where('email', $this->data['email'])
@@ -41,27 +41,26 @@ class RegisterStudent implements ShouldQueue
             return;
         }
 
-        $user = null;
-        $studentId = null;
-
         $program = Program::where('code', $this->data['program_code'])->first();
         if (!$program) {
-            // Fails the job so you see it in "failed_jobs" table
             $this->fail(new \Exception("Program {$this->data['program_code']} not found"));
             return;
         }
 
-        // 2. Pass variables into the closure.
-        DB::transaction(function () use ($program, &$user, &$studentId) {
+        $user = null;
+        $studentId = null;
 
-            // 3. CRITICAL: Atomic Lock prevents duplicate IDs during bulk import
-            // This forces workers to queue up for 5 seconds to generate IDs one by one
-            Cache::lock('student_id_gen_' . $program->id, 5)->block(5, function () use ($program, &$studentId) {
+        // 2. FIX: The Lock is now the OUTER wrapper.
+        // This prevents the dead transaction from blocking the lock release.
+        Cache::lock('student_id_gen_' . $program->id, 10)->block(10, function () use ($program, &$user, &$studentId) {
+
+            // 3. FIX: The Transaction is now the INNER wrapper.
+            DB::transaction(function () use ($program, &$user, &$studentId) {
 
                 $academicYear = date('Y', strtotime($this->data['enrollment_date']));
                 $code = $program->code ?? 'STU';
 
-                // Now safely count
+                // Now safely count inside the lock
                 $sequence = Student::where('program_id', $program->id)->count() + 1;
                 $studentId = sprintf("%s-%s-%03d", $academicYear, $code, $sequence);
 
@@ -70,42 +69,42 @@ class RegisterStudent implements ShouldQueue
                     $sequence++;
                     $studentId = sprintf("%s-%s-%03d", $academicYear, $code, $sequence);
                 }
+
+                // Create User
+                $user = User::firstOrCreate(
+                    ['email' => $this->data['email']],
+                    [
+                        'name' => $this->data['first_name'] . ' ' . $this->data['last_name'],
+                        'password' => Hash::make($studentId),
+                        'role' => 'STUDENT',
+                    ]
+                );
+
+                // Create Student
+                Student::create(
+                    [
+                        'email' => $this->data['email'],
+                        'user_id' => $user->id,
+                        'public_id' => (string) Str::uuid(),
+                        'program_id' => $program->id,
+                        'student_id' => $studentId,
+
+                        'first_name' => $this->data['first_name'],
+                        'last_name' => $this->data['last_name'],
+                        'national_id' => $this->data['nrc_number'],
+                        'gender' => $this->data['gender'],
+                        'dob' => $this->data['date_of_birth'],
+                        'address' => $this->data['address'],
+                        'phone' => $this->data['phone_number'],
+                        'current_semester_sequence' => $this->data['semester'] ?? 1,
+                        'enrollment_date' => $this->data['enrollment_date'],
+                        'status' => 'active',
+                    ]
+                );
             });
-
-            // Create User
-            $user = User::firstOrCreate(
-                ['email' => $this->data['email']],
-                [
-                    'name' => $this->data['first_name'] . ' ' . $this->data['last_name'],
-                    'password' => Hash::make($studentId),
-                    'role' => 'STUDENT',
-                ]
-            );
-
-            // Create Student
-            Student::create(
-                [
-                    'email' => $this->data['email'],
-                    'user_id' => $user->id,
-                    'public_id' => (string) Str::uuid(),
-                    'program_id' => $program->id,
-                    'student_id' => $studentId,
-
-                    'first_name' => $this->data['first_name'],
-                    'last_name' => $this->data['last_name'],
-                    'national_id' => $this->data['nrc_number'],
-                    'gender' => $this->data['gender'],
-                    'dob' => $this->data['date_of_birth'],
-                    'address' => $this->data['address'],
-                    'phone' => $this->data['phone_number'],
-                    'current_semester_sequence' => $this->data['semester']?? 1,
-                    'enrollment_date' => $this->data['enrollment_date'],
-                    'status' => 'active',
-                ]
-            );
         });
 
-        // 4. Send Email
+        // 4. Send Email (Only if lock & transaction succeeded)
         if ($user && $studentId) {
             $notifier->sendWelcomeEmail(
                 $user,
