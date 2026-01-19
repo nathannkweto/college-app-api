@@ -84,7 +84,7 @@ return [
         ],
 
         'pgsql' => [
-            'driver' => 'pgsql',
+            'driver' => 'pgsql-pgbouncer',
             'url' => env('DB_URL'),
             'host' => env('DB_HOST', '127.0.0.1'),
             'port' => env('DB_PORT', '5432'),
@@ -104,7 +104,7 @@ return [
         ],
 
         'pgsql_batches' => [
-            'driver' => 'pgsql',
+            'driver' => 'pgsql-pgbouncer',
             'url' => env('DB_URL'), // Same URL
             'host' => env('DB_HOST', '127.0.0.1'),
             'port' => env('DB_PORT', '5432'),
