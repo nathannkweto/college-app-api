@@ -3,24 +3,15 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\RegisterStudent;
 use App\Models\Student;
-use App\Models\Program;
-use App\Models\User;
-use App\Models\ExamResult;
-use App\Services\NotificationService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\LazyCollection;
+use Illuminate\Support\Facades\Storage;
 
 class StudentController extends Controller
 {
-    protected $notifier;
-
-    public function __construct(NotificationService $notifier)
-    {
-        $this->notifier = $notifier;
-    }
 
     /**
      * List Students with pagination and search.
@@ -61,79 +52,19 @@ class StudentController extends Controller
             'first_name' => 'required|string',
             'last_name' => 'required|string',
             'email' => 'required|email|unique:users,email',
-            'program_public_id' => 'required|exists:programs,public_id',
+            'program_code' => 'required|exists:programs,code',
             'gender' => 'required|in:M,F',
-            'national_id' => 'required|string|unique:students,national_id',
+            'nrc_number' => 'required|string|unique:students,national_id',
             'enrollment_date' => 'required|date',
-            'dob' => 'required|date',
+            'date_of_birth' => 'required|date',
             'address' => 'required|string',
-            'phone' => 'required|string',
+            'phone_number' => 'required|string',
         ]);
 
-        // --- 1. COMMENTED OUT TRANSACTION START ---
-        // $registrationResult = DB::transaction(function () use ($validated) {
+        // Dispatch a single job (or run synchronously if preferred)
+        RegisterStudent::dispatchSync($validated);
 
-        $program = Program::where('public_id', $validated['program_public_id'])->firstOrFail();
-
-        // A. Generate Custom Student ID (e.g. 2025-CS-001)
-        $academicYear = date('Y', strtotime($validated['enrollment_date']));
-        $code = $program->code ?? 'STU';
-        $sequence = Student::where('program_id', $program->id)->count() + 1;
-        $studentId = sprintf("%s-%s-%03d", $academicYear, $code, $sequence);
-
-        // B. Create User Login
-        $user = User::create([
-            'name' => $validated['first_name'] . ' ' . $validated['last_name'],
-            'email' => $validated['email'],
-            'password' => Hash::make($studentId),
-            'role' => 'STUDENT',
-        ]);
-
-        // C. Create Student Profile
-        $student = Student::create([
-            'user_id' => $user->id,
-            'public_id' => (string) Str::uuid(), // Explicitly generate UUID
-            'student_id' => $studentId,
-            'first_name' => $validated['first_name'],
-            'last_name' => $validated['last_name'],
-            'email' => $validated['email'],
-            'program_id' => $program->id,
-            'gender' => $validated['gender'],
-            'national_id' => $validated['national_id'],
-            'current_semester_sequence' => 1,
-            'status' => 'active',
-            'enrollment_date' => $validated['enrollment_date'],
-            'dob' => $validated['dob'],
-            'address' => $validated['address'],
-            'phone' => $validated['phone'],
-        ]);
-
-        // MANUALLY ASSIGN VARIABLE (Do not use 'return' here)
-        $registrationResult = [
-            'user' => $user,
-            'student_id' => $studentId,
-            'password' => $studentId
-        ];
-
-        // --- 2. COMMENTED OUT TRANSACTION END ---
-        // });
-
-        // D. Send Welcome Email
-        // Note: Wrapped in try-catch so email failure doesn't crash the API response
-        try {
-            $this->notifier->sendWelcomeEmail(
-                $registrationResult['user'],
-                $registrationResult['student_id'],
-                'student'
-            );
-        } catch (\Exception $e) {
-            // Log email error but don't stop execution
-        }
-
-        return response()->json([
-            'message' => 'Student registered successfully',
-            'student_id' => $registrationResult['student_id'],
-        ], 201);
+        return response()->json(['message' => 'Student registration queued.'], 202);
     }
 
     /**
@@ -142,202 +73,56 @@ class StudentController extends Controller
     public function batchUpload(Request $request)
     {
         $request->validate([
-            'students' => 'required|array',
-            'students.*.first_name' => 'required',
-            'students.*.last_name' => 'required',
-            'students.*.email' => 'required|email|unique:users,email',
-            'students.*.gender' => 'required|in:M,F',
-            'program_public_id' => 'required|exists:programs,public_id',
-            'enrollment_date' => 'required|date',
-            'dob' => 'required|date',
-            'address' => 'required|string',
-            'phone' => 'required|string',
+            'file' => 'required|file|mimes:csv,txt',
         ]);
 
-        // --- COMMENTED OUT TRANSACTION START ---
-        // DB::transaction(function () use ($request) {
-        foreach ($request->students as $studentData) {
-            // This calls the helper function below
-            $this->createStudent($studentData);
-        }
-        // });
-        // --- COMMENTED OUT TRANSACTION END ---
+        // 1. Store the file temporarily
+        $relativePath = $request->file('file')->store('temp');
 
-        return response()->json(['message' => 'Batch upload completed successfully.']);
-    }
+        // 2. Read the file efficiently using LazyCollection (Low Memory usage)
+        // We defer the heavy lifting to the queue dispatch
+        $jobs = LazyCollection::make(function () use ($relativePath) {
+            $handle = fopen(Storage::path($relativePath), 'r');
+            // Skip Header Row?
+            fgetcsv($handle);
 
-    /**
-     * Helper to create a single student (used by store and batchUpload)
-     */
-    private function createStudent($data)
-    {
-        $program = Program::where('public_id', $data['program_public_id'])->firstOrFail();
+            while (($row = fgetcsv($handle)) !== false) {
+                // DATA CLEANUP: Trim whitespace from all fields
+                $row = array_map('trim', $row);
 
-        // FIX: Replaced invalid syntax "['enrollment_date']" with correct strtotime
-        $academicYear = date('Y', strtotime($data['enrollment_date']));
+                // SKIP empty rows
+                if (count($row) < 10) continue;
 
-        $code = $program->code ?? 'STU';
-        $sequence = Student::where('program_id', $program->id)->count() + 1;
-        $studentId = sprintf("%s-%s-%03d", $academicYear, $code, $sequence);
-
-        $user = User::create([
-            'name' => $data['first_name'] . ' ' . $data['last_name'],
-            'email' => $data['email'],
-            'password' => Hash::make($studentId),
-            'role' => 'STUDENT',
-        ]);
-
-        return Student::create([
-            'user_id' => $user->id,
-            'public_id' => (string) Str::uuid(), // Explicitly generate UUID
-            'student_id' => $studentId,
-            'first_name' => $data['first_name'],
-            'last_name' => $data['last_name'],
-            'email' => $data['email'],
-            'gender' => $data['gender'],
-            'program_id' => $program->id,
-            'enrollment_date' => $data['enrollment_date'],
-            'current_semester_sequence' => 1,
-            'status' => 'active',
-            'national_id' => $data['national_id'],
-            'dob' => $data['dob'],
-            'address' => $data['address'],
-            'phone' => $data['phone'],
-        ]);
-    }
-
-    /**
-     * Preview promotion to see who qualifies.
-     */
-    public function promotionPreview(Request $request)
-    {
-        // ... (Promotion Preview Logic remains unchanged) ...
-        $request->validate([
-            'program_public_id' => 'required|exists:programs,public_id',
-            'current_sequence' => 'required|integer',
-        ]);
-
-        $program = Program::where('public_id', $request->program_public_id)->first();
-        $currentSeq = $request->current_sequence;
-        $nextSeq = $currentSeq + 1;
-        $isYearlyPromotion = ($currentSeq % 2 == 0);
-
-        $students = Student::where('program_id', $program->id)
-            ->where('current_semester_sequence', $currentSeq)
-            ->where('status', 'active')
-            ->get();
-
-        $eligibleCount = 0;
-        $detainedCount = 0;
-        $details = [];
-
-        foreach ($students as $student) {
-            $status = 'PROMOTED';
-            $reason = 'Automatic semester progression';
-
-            if ($isYearlyPromotion) {
-                $hasFailures = $this->hasFailuresInYear($student, $currentSeq);
-                if ($hasFailures) {
-                    $status = 'DETAINED';
-                    $reason = 'Failed courses in current year';
-                    $detainedCount++;
-                } else {
-                    $reason = 'Passed all requirements';
-                    $eligibleCount++;
-                }
-            } else {
-                $eligibleCount++;
+                // Map CSV row to Job Data
+                yield new RegisterStudent([
+                    'last_name' => $row[0],
+                    'first_name' => $row[1],
+                    'nrc_number' => $row[2],
+                    'gender' => $row[3],
+                    'date_of_birth' => $row[4],
+                    'address' => $row[5],
+                    'email' => $row[6],
+                    'phone_number' => $row[7],
+                    'program_code' => $row[8],
+                    'semester' => $row[9],
+                    'enrollment_date' => $row[10],
+                ]);
             }
+            fclose($handle);
+        });
 
-            $details[] = [
-                'name' => $student->first_name . ' ' . $student->last_name,
-                'student_id' => $student->student_id,
-                'status' => $status,
-                'reason' => $reason
-            ];
-        }
+        // 3. Create the Batch
+        // Note: We convert the LazyCollection to an array for the batch() method.
+        $batch = Bus::batch($jobs->toArray())
+            ->name('Student CSV Import')
+            ->allowFailures()
+            ->dispatch();
 
         return response()->json([
-            'program' => $program->name,
-            'promotion_type' => $isYearlyPromotion ? 'YEARLY TRANSITION (Strict)' : 'SEMESTER PROGRESSION (Automatic)',
-            'moving_to_sequence' => $nextSeq,
-            'stats' => [
-                'total_candidates' => $students->count(),
-                'eligible' => $eligibleCount,
-                'detained' => $detainedCount
-            ],
-            'details' => $details
-        ]);
+            'message' => 'Import started.',
+            'batch_id' => $batch->id
+        ], 202);
+
     }
 
-    /**
-     * Execute the Promotion.
-     */
-    public function promote(Request $request)
-    {
-        $request->validate([
-            'program_public_id' => 'required|exists:programs,public_id',
-            'current_sequence' => 'required|integer',
-        ]);
-
-        $program = Program::where('public_id', $request->program_public_id)->first();
-        $currentSeq = $request->current_sequence;
-        $nextSeq = $currentSeq + 1;
-        $isYearlyPromotion = ($currentSeq % 2 == 0);
-        $isGraduating = $nextSeq > $program->total_semesters;
-
-        // --- COMMENTED OUT TRANSACTION START ---
-        // DB::transaction(function () use ($program, $currentSeq, $nextSeq, $isYearlyPromotion, $isGraduating) {
-
-        $students = Student::where('program_id', $program->id)
-            ->where('current_semester_sequence', $currentSeq)
-            ->where('status', 'active')
-            ->get();
-
-        foreach ($students as $student) {
-            $shouldPromote = true;
-
-            if ($isYearlyPromotion) {
-                if ($this->hasFailuresInYear($student, $currentSeq)) {
-                    $shouldPromote = false;
-                }
-            }
-
-            if ($shouldPromote) {
-                if ($isGraduating) {
-                    $student->update([
-                        'status' => 'graduated',
-                        'current_semester_sequence' => $program->total_semesters
-                    ]);
-                } else {
-                    $student->update([
-                        'current_semester_sequence' => $nextSeq
-                    ]);
-                }
-            }
-        }
-        // });
-        // --- COMMENTED OUT TRANSACTION END ---
-
-        return response()->json(['message' => 'Promotion process completed.']);
-    }
-
-    private function hasFailuresInYear($student, $currentSeq)
-    {
-        // ... (Helper remains unchanged) ...
-        $sequencesInYear = [$currentSeq - 1, $currentSeq];
-
-        $requiredCourseIds = $student->program->courses()
-            ->wherePivotIn('semester_sequence', $sequencesInYear)
-            ->pluck('courses.id');
-
-        if ($requiredCourseIds->isEmpty()) return false;
-
-        $passedCourseIds = ExamResult::where('student_id', $student->id)
-            ->whereIn('course_id', $requiredCourseIds)
-            ->where('is_passed', true)
-            ->pluck('course_id');
-
-        return $passedCourseIds->count() < $requiredCourseIds->count();
-    }
 }

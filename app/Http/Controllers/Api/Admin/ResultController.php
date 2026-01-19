@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\ExamResult;
+use App\Models\Enrollment; // <--- CHANGED from ExamResult
 use App\Models\Program;
 use App\Models\ResultPublication;
 use App\Models\Semester;
@@ -20,65 +20,62 @@ class ResultController extends Controller
     {
         $request->validate([
             'program_public_id' => 'required',
-            'semester_public_id' => 'required' // Make sure this is passed
+            'semester_public_id' => 'required'
         ]);
 
         $program = Program::where('public_id', $request->program_public_id)->firstOrFail();
         $semester = Semester::where('public_id', $request->semester_public_id)->firstOrFail();
 
         // 1. Get Publication Status
-        $publication = ResultPublication::where('program_id', $program->id)
-            ->where('semester_id', $semester->id)
-            ->first();
+        // Based on your schema, publication is per Semester (global) OR you might want to add program_id to the schema later.
+        // For now, valid code based on your provided schema:
+        $publication = ResultPublication::where('semester_id', $semester->id)->first();
 
-        // 2. Get expected course count for this program/semester
-        // Note: You need a logic to know how many courses a student *should* have taken.
-        // For simplicity, we assume the program has a defined curriculum for this semester.
-        // This is a simplified count.
-        $expectedCourseCount = $program->courses()
-            ->wherePivot('semester_sequence', 1) // Logic needs to adjust based on student year, but keeping simple for now
-            ->count();
-        if ($expectedCourseCount == 0) $expectedCourseCount = 5; // Fallback to prevent divide by zero
-
-        // 3. Fetch Students with their aggregated results
+        // 2. Fetch Students
         $students = Student::where('program_id', $program->id)
-            ->where('status', 'active') // Only active students
+            ->where('status', 'active')
             ->get()
-            ->map(function ($student) use ($semester, $expectedCourseCount) {
+            ->map(function ($student) use ($semester) {
 
-                // Fetch results for this student in this semester
-                $results = ExamResult::where('student_id', $student->id)
-                    ->where('semester_id', $semester->id)
+                // 3. Fetch Enrollments (replacing ExamResult)
+                // We match the semester string (e.g. "2024-2025 Semester 1") if that's how it's stored,
+                // or use a scope if you added semester_id to enrollments.
+                $enrollments = Enrollment::where('student_id', $student->id)
+                    ->where('semester', $semester->name) // Assuming 'semester' column is the string name
                     ->get();
 
-                $resultsCount = $results->count();
-                $failedCount = $results->where('is_passed', false)->count();
-                $avgScore = $resultsCount > 0 ? $results->avg('score') : 0;
+                $resultsCount = $enrollments->count();
 
-                // Status: Complete if they have results for at least 80% of expected courses
-                // (You can adjust this logic)
+                // Calculate Failure (Grade 'F' or score < 50)
+                $failedCount = $enrollments->filter(function($e) {
+                    return $e->grade === 'F' || $e->score < 50;
+                })->count();
+
+                $avgScore = $resultsCount > 0 ? $enrollments->avg('score') : 0;
+
+                // Simple Status Logic
                 $status = ($resultsCount >= 1) ? 'Complete' : 'Pending';
 
-                // Decision
+                // Decision Logic
                 $decision = 'PROMOTED';
-                if ($failedCount > 0) $decision = 'REPEAT'; // Simple logic
+                if ($failedCount > 0) $decision = 'REPEAT';
                 if ($resultsCount == 0) $decision = 'NO_RESULTS';
 
                 return [
                     'student_public_id' => $student->public_id,
-                    'student_id' => $student->student_id, // The readable ID (e.g., STU-2024-001)
-                    'first_name' => $student->first_name,
-                    'last_name' => $student->last_name,
-                    'courses_failed' => $failedCount,
-                    'average_score' => round($avgScore, 2),
+                    'student_id'        => $student->student_id,
+                    'first_name'        => $student->first_name,
+                    'last_name'         => $student->last_name,
+                    'courses_failed'    => $failedCount,
+                    'average_score'     => round($avgScore, 2),
                     'semester_decision' => $decision,
-                    'status' => $status, // 'Complete' or 'Pending'
+                    'status'            => $status,
                 ];
             });
 
         return response()->json([
-            'is_published' => $publication ? $publication->is_published : false,
-            'data' => $students
+            'is_published' => $publication ? (bool)$publication->is_published : false,
+            'data'         => $students
         ]);
     }
 
@@ -88,78 +85,76 @@ class ResultController extends Controller
     public function studentTranscript(Request $request)
     {
         $request->validate([
-            'student_public_id' => 'required',
+            'student_public_id'  => 'required',
             'semester_public_id' => 'required'
         ]);
 
+        // 1. Resolve IDs from Public IDs
         $student = Student::with('program')->where('public_id', $request->student_public_id)->firstOrFail();
         $semester = Semester::where('public_id', $request->semester_public_id)->firstOrFail();
 
-        $results = ExamResult::with(['course'])
+        // 2. Fetch Enrollments
+        // We query by semester_id (Foreign Key) as per your schema
+        $results = Enrollment::with('programCourse.course')
             ->where('student_id', $student->id)
             ->where('semester_id', $semester->id)
             ->get();
 
-        $gpa = $results->avg('score'); // Simplified GPA (Average Score)
-
+        // 3. Map Results
+        // Only return what is strictly in the enrollment table + Course Info for context
         $mappedResults = $results->map(function ($res) {
+            // Safe navigation to get course details via the pivot
+            $course = $res->programCourse->course ?? null;
+
             return [
-                'course_name' => $res->course->name,
-                'course_code' => $res->course->code,
-                'total_score' => $res->score,
-                'grade' => $res->grade,
-                'status' => $res->is_passed ? 'PASS' : 'FAIL',
+                // Context (Joined Data)
+                'course_name' => $course ? $course->name : 'Unknown Course',
+                'course_code' => $course ? $course->code : '---',
+
+                // Enrollment Table Data
+                'score'       => $res->score, // decimal(5,2)
+                'grade'       => $res->grade, // string
             ];
         });
 
-        // Determine Academic Standing
-        $failed = $results->where('is_passed', false)->count();
-        $standing = $failed == 0 ? 'Good Standing' : 'Academic Warning';
-
         return response()->json([
-            'student' => $student, // Returns full student object as per ref schema
-            'semester_gpa' => round($gpa, 2),
-            'academic_standing' => $standing,
+            'student' => $student,
+            // We return the raw mapped list.
+            // No GPA or standing calculations as they don't exist in the table.
             'results' => $mappedResults
         ]);
     }
+
     /**
      * Publish results for a Program + Semester.
      */
     public function publish(Request $request)
     {
+        // 1. Validate both IDs are present
         $request->validate([
-            'program_public_id' => 'required|exists:programs,public_id',
             'semester_public_id' => 'required|exists:semesters,public_id',
+            'program_public_id'  => 'required|exists:programs,public_id',
         ]);
 
-        $program = Program::where('public_id', $request->program_public_id)->firstOrFail();
+        // 2. Resolve Models
         $semester = Semester::where('public_id', $request->semester_public_id)->firstOrFail();
+        $program  = Program::where('public_id', $request->program_public_id)->firstOrFail();
 
-        DB::transaction(function () use ($program, $semester) {
-            // 1. Update or Create the Publication Record
-            ResultPublication::updateOrCreate(
-                [
-                    'program_id' => $program->id,
-                    'semester_id' => $semester->id
-                ],
-                [
-                    'is_published' => true,
-                    'published_at' => now()
-                ]
-            );
-
-            // 2. Bulk Update: Find all students in this program
-            // Then find their results for this semester and flip 'is_published'
-            $studentIds = Student::where('program_id', $program->id)->pluck('id');
-
-            ExamResult::whereIn('student_id', $studentIds)
-                ->where('semester_id', $semester->id)
-                ->update(['is_published' => true]);
-        });
+        // 3. Update or Create the Publication Record
+        // We now scope this by BOTH Semester AND Program.
+        ResultPublication::updateOrCreate(
+            [
+                'semester_id' => $semester->id,
+                'program_id'  => $program->id, // <--- New logic
+            ],
+            [
+                'is_published' => true,
+                'updated_at'   => now()
+            ]
+        );
 
         return response()->json([
-            'message' => "Results for {$program->name} have been published. Students can now view them."
+            'message' => "Results for {$program->name} ({$semester->name}) have been published."
         ]);
     }
 }

@@ -11,10 +11,9 @@ class Student extends Model
 
     protected $guarded = ['id'];
 
-
-
     protected $casts = [
-        'enrollment_date' => 'date'
+        'enrollment_date' => 'date',
+        'dob' => 'date',
     ];
 
     // 1. Relationships
@@ -31,37 +30,13 @@ class Student extends Model
         return $this->hasMany(FinanceFee::class);
     }
 
-    public function examResults()
+    public function enrollments()
     {
-        return $this->hasMany(ExamResult::class);
+        return $this->hasMany(Enrollment::class);
     }
 
     /**
-     * 2. LOGIC: Get courses for the student's CURRENT sequence.
-     * * If Student is in Sequence 3 (Year 2, Sem 1), fetch only Sequence 3 courses
-     * from their Program.
-     */
-    public function currentCourses()
-    {
-        return $this->program->courses()
-            ->wherePivot('semester_sequence', $this->current_semester_sequence);
-    }
-
-    /**
-     * 3. LOGIC: Get Failed Courses
-     * Courses from PREVIOUS sequences that do not have a 'passed' exam result.
-     */
-    public function carryOverCourses()
-    {
-        $passedCourseIds = $this->examResults()->where('is_passed', true)->pluck('course_id');
-
-        return $this->program->courses()
-            ->wherePivot('semester_sequence', '<', $this->current_semester_sequence)
-            ->whereNotIn('courses.id', $passedCourseIds);
-    }
-
-    /**
-     * 4. Helper: Calculate Total Balance
+     * Helper: Calculate Total Balance
      */
     public function getOutstandingBalanceAttribute()
     {

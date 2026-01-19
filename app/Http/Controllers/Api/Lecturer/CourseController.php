@@ -23,6 +23,7 @@ class CourseController extends Controller
         if (!$lecturer) {
             return response()->json(['message' => 'Lecturer profile not found.'], 404);
         }
+
         // 1. Get the Active Semester
         $activeSemester = Semester::where('is_active', true)->first();
 
@@ -31,13 +32,9 @@ class CourseController extends Controller
         }
 
         // 2. Determine Active Sequences (Odd vs Even)
-        // If semester_number is 1, we want 1, 3, 5, 7...
-        // If semester_number is 2, we want 2, 4, 6, 8...
         $isOddSemester = ($activeSemester->semester_number % 2) !== 0;
 
         // 3. Fetch Assignments
-        // We query the Pivot table (ProgramCourse) directly to get the link
-        // between Program and Course where this lecturer is assigned.
         $assignedCourses = ProgramCourse::query()
             ->with([
                 'course',
@@ -45,14 +42,13 @@ class CourseController extends Controller
                 'program.qualification'
             ])
             ->where('lecturer_id', $lecturer->id)
-            // Filter by sequence parity (Modulus 2 logic)
             ->whereRaw('semester_sequence % 2 = ?', [$isOddSemester ? 1 : 0])
             ->get();
 
         // 4. Transform for API
         $data = $assignedCourses->map(function ($assignment) {
             return [
-                'public_id' => $assignment->course->public_id, // Use Course Public ID for navigation
+                'public_id' => $assignment->course->public_id,
                 'course_name' => $assignment->course->name,
                 'course_code' => $assignment->course->code,
                 'program_name' => $assignment->program->name,
@@ -83,12 +79,12 @@ class CourseController extends Controller
         if (!$lecturer) {
             return response()->json(['message' => 'Lecturer profile not found.'], 404);
         }
+
         // 1. Validate Semester
         $activeSemester = Semester::where('is_active', true)->first();
         if (!$activeSemester) abort(404, 'No active semester');
 
         // 2. Find the specific assignment (ProgramCourse pivot)
-        // We need to join the courses table to find by public_id
         $assignment = ProgramCourse::query()
             ->where('lecturer_id', $lecturer->id)
             ->whereHas('course', function($q) use ($coursePublicId) {
@@ -98,16 +94,22 @@ class CourseController extends Controller
             ->firstOrFail();
 
         // 3. Fetch Students
-        // We need students who belong to this Program
-        // AND are currently at this specific Semester Sequence.
+        // We eagerly load 'enrollments' to see if they already have a grade for this course
         $students = Student::query()
             ->where('program_id', $assignment->program_id)
             ->where('current_semester_sequence', $assignment->semester_sequence)
-            // Optional: Filter by status (e.g., only 'Active' students)
+            ->with(['enrollments' => function($q) use ($assignment) {
+                // Only get enrollments for THIS specific program course
+                $q->where('program_course_id', $assignment->id);
+            }])
             ->orderBy('last_name')
             ->get();
 
         return response()->json([
+            // --- CRITICAL FIX: The Integer ID required by Flutter ---
+            'program_course_id' => $assignment->id,
+            // --------------------------------------------------------
+
             'course' => [
                 'name' => $assignment->course->name,
                 'code' => $assignment->course->code,
@@ -118,17 +120,26 @@ class CourseController extends Controller
                 'code' => $assignment->program->code,
             ],
             'context' => [
+                // --- CRITICAL FIX: The Semester Name required by Flutter ---
+                'semester' => $activeSemester->name,
                 'semester_sequence' => $assignment->semester_sequence,
                 'student_count' => $students->count(),
             ],
             'students' => $students->map(function($student) {
+                // Check if an enrollment exists (grade already submitted)
+                $enrollment = $student->enrollments->first();
+
                 return [
                     'public_id' => $student->public_id,
                     'student_id' => $student->student_id,
                     'first_name' => $student->first_name,
                     'last_name' => $student->last_name,
                     'email' => $student->email,
-                    'avatar' => $student->avatar_url, // If exists
+                    'avatar' => $student->avatar_url,
+
+                    // Map existing grades if they exist
+                    'current_grade' => $enrollment,
+                    'current_status' => $enrollment ? 'PASS' : 'PENDING', // Simplified logic
                 ];
             })
         ]);

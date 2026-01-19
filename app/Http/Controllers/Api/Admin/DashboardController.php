@@ -7,6 +7,7 @@ use App\Models\Student;
 use App\Models\Lecturer;
 use App\Models\Program;
 use App\Models\Semester;
+use App\Models\Qualification;
 use App\Models\FinanceTransaction;
 use Illuminate\Http\JsonResponse;
 
@@ -22,9 +23,7 @@ class DashboardController extends Controller
         $studentsCount = Student::where('status', 'active')->count();
         $lecturersCount = Lecturer::count();
         $programsCount = Program::count();
-
-        // "Levels" can be interpreted as total defined semesters or academic years
-        $levelsCount = Semester::count();
+        $levelsCount = Qualification::count();
 
         return response()->json([
             'data' => [

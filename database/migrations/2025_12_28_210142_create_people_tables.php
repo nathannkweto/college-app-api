@@ -58,10 +58,18 @@ return new class extends Migration
 
             $table->timestamps();
         });
+
+        Schema::create('admins', function (Blueprint $table) {
+            $table->id();
+            // This links the Admin profile to the User login
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->timestamps();
+        });
     }
 
     public function down()
     {
+        Schema::dropIfExists('admins');
         Schema::dropIfExists('students');
         Schema::dropIfExists('lecturers');
     }

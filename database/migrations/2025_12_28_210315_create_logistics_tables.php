@@ -14,8 +14,8 @@ return new class extends Migration
             $table->id();
             $table->uuid('public_id')->unique();
 
-            $table->string('academic_year');
-            $table->integer('semester_number');
+            $table->string('academic_year'); // e.g., "2025-2026"
+            $table->integer('semester_number'); // e.g., 1 or 2
 
             $table->boolean('is_active')->default(true);
 
@@ -23,6 +23,8 @@ return new class extends Migration
             $table->integer('length_weeks');
 
             $table->timestamps();
+
+            $table->unique(['academic_year', 'semester_number']);
         });
 
         // 2. Timetable Entries
@@ -32,9 +34,8 @@ return new class extends Migration
 
             // Context
             $table->foreignId('semester_id')->constrained();
-            $table->foreignId('program_id')->constrained();
-            $table->foreignId('course_id')->constrained();
-            $table->foreignId('lecturer_id')->constrained();
+            $table->foreignId('program_course_id')->constrained();
+            $table->foreignId('program_id')->nullable()->constrained()->onDelete('cascade');
 
             // Details
             $table->enum('day', ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']);

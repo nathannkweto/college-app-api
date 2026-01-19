@@ -20,7 +20,7 @@ class Program extends Model
 
     public function courses(): BelongsToMany
     {
-        return $this->belongsToMany(Course::class, 'program_course')
+        return $this->belongsToMany(Course::class, 'program_courses')
             ->using(ProgramCourse::class) // <--- ADD THIS LINE
             ->withPivot('semester_sequence', 'lecturer_id')
             ->orderByPivot('semester_sequence');

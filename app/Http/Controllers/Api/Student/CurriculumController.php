@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api\Student;
 
 use App\Http\Controllers\Controller;
+use App\Models\Enrollment;
+use App\Models\ProgramCourse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -10,72 +12,70 @@ class CurriculumController extends Controller
 {
     public function index(Request $request)
     {
-        $student = Auth::user()->profile; // Assuming 'profile' relates to the Student model
+        $student = Auth::user()->profile;
         $program = $student->program;
 
         if (!$program) {
             return response()->json(['data' => null], 404);
         }
 
-        // 1. Fetch courses WITH pivot data
-        // We must use 'withPivot' to access semester_sequence
-        $allCourses = $program->courses()
-            ->withPivot('semester_sequence')
-            ->orderByPivot('semester_sequence', 'asc')
+        // 1. Get the list of "Passed" ProgramCourse IDs efficiently
+        // We fetch IDs where the student has an enrollment that is NOT 'Pending' or 'F'
+        $passedProgramCourseIds = Enrollment::where('student_id', $student->id)
+            ->whereNotIn('grade', ['Pending', 'F']) // Adjust status strings as needed (e.g. 'Failed')
+            ->pluck('program_course_id')
+            ->toArray();
+
+        // 2. Fetch all ProgramCourses (The Curriculum)
+        // We use the ProgramCourse model so we have access to the specific ID linked in enrollments
+        $curriculum = ProgramCourse::where('program_id', $program->id)
+            ->with('course') // Eager load the actual course details (name, code)
+            ->orderBy('semester_sequence', 'asc')
             ->get();
 
-        // 2. Group by the Pivot Field
-        // We use a callback because the data is nested in ->pivot
-        $semesters = $allCourses->groupBy(function ($course) {
-            return $course->pivot->semester_sequence;
-        })->map(function ($courses, $sequence) use ($student) {
+        // 3. Group by Semester Sequence
+        $semestersData = $curriculum->groupBy('semester_sequence')
+            ->map(function ($programCourses, $sequence) use ($student, $passedProgramCourseIds) {
 
-            $seq = (int) $sequence;
+                $seq = (int) $sequence;
 
-            return [
-                // Logic: Seq 1,2 = Year 1; Seq 3,4 = Year 2, etc.
-                'title' => "Year " . ceil($seq / 2) . " - Semester " . ($seq % 2 == 0 ? 2 : 1),
-
-                // Logic: If student is in seq 3, then 1 and 2 are cleared.
-                'is_cleared' => (int) $student->current_semester_sequence > $seq,
-
-                'is_current' => (int) $student->current_semester_sequence == $seq,
-
-                'courses' => $courses->map(function ($c) {
+                // Map the courses for this semester
+                $mappedCourses = $programCourses->map(function ($pc) use ($passedProgramCourseIds) {
                     return [
-                        'code' => $c->code,
-                        'name' => $c->name,
-                        // API expects 'is_cleared', normally determined by checking exam results
-                        // For now, we default to false or could check against a list of passed course IDs
-                        'is_cleared' => false,
+                        'code'       => $pc->course->code,
+                        'name'       => $pc->course->name,
+                        // Check if this specific ProgramCourse ID exists in our passed list
+                        'is_cleared' => in_array($pc->id, $passedProgramCourseIds),
                     ];
-                })->values()
-            ];
-        })->values(); // Reset keys to array (0, 1, 2...) for JSON
+                });
 
-        // 3. Wrap in the 'data' key
+                // A semester is "cleared" if every single course inside it is cleared
+                // valid if the collection does NOT contain any course where is_cleared is false
+                $isSemesterCleared = !$mappedCourses->contains('is_cleared', false);
+
+                return [
+                    // Display Title (e.g. Year 1 - Semester 1)
+                    'title'      => "Year " . ceil($seq / 2) . " - Semester " . ($seq % 2 == 0 ? 2 : 1),
+                    'is_cleared' => $isSemesterCleared,
+                    'is_current' => (int) $student->current_semester_sequence === $seq,
+                    'courses'    => $mappedCourses->values(),
+                ];
+            })
+            ->values(); // Reset array keys for JSON
+
+        // 4. Calculate Real Progress
+        $totalCourses = $curriculum->count();
+        $passedCount = count($passedProgramCourseIds);
+        // Avoid division by zero
+        $percentage = $totalCourses > 0 ? round($passedCount / $totalCourses, 3) : 0.0;
+
         return response()->json([
             'data' => [
-                'program_name' => $program->name,
-                'total_semesters' => $program->total_semesters ?? 8,
-                'completion_percentage' => $this->calculateProgress($student, $program),
-                'semesters' => $semesters
+                'program_name'          => $program->name,
+                'total_semesters'       => $program->total_semesters ?? 8,
+                'completion_percentage' => $percentage,
+                'semesters'             => $semestersData
             ]
         ]);
-    }
-
-    /**
-     * Helper to calculate completion (e.g. 0.375)
-     */
-    private function calculateProgress($student, $program) {
-        $total = $program->courses()->count();
-        if ($total == 0) return 0.0;
-
-        // Count courses in previous semesters using wherePivot
-        $approxCoursesDone = $program->courses()
-            ->wherePivot('semester_sequence', '<', $student->current_semester_sequence)
-            ->count();
-
-        return round($approxCoursesDone / $total, 3);
     }
 }

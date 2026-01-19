@@ -34,6 +34,14 @@ return [
         'sync' => [
             'driver' => 'sync',
         ],
+        'google-cloud-tasks' => [
+            'driver' => 'google-cloud-tasks',
+            'project' => env('GOOGLE_CLOUD_PROJECT_ID'),
+            'location' => env('GOOGLE_CLOUD_LOCATION', 'us-east1'),
+            'queue' => env('GOOGLE_CLOUD_TASKS_QUEUE', 'default'),
+            'target_service' => env('GOOGLE_CLOUD_RUN_SERVICE_NAME'),
+            'service_account_email' => env('GOOGLE_CLOUD_SERVICE_ACCOUNT'), // SA used to invoke the job
+        ],
 
         'database' => [
             'driver' => 'database',

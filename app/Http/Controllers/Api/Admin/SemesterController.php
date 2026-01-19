@@ -4,8 +4,11 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Semester;
+use App\Models\Student;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use App\Jobs\EnrollStudentForSemester;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Log;
 
 class SemesterController extends Controller
 {
@@ -34,24 +37,13 @@ class SemesterController extends Controller
 
     public function index()
     {
-        // FIX: Match the snake_case keys expected by the Flutter admin_api
         $semesters = Semester::orderBy('start_date', 'desc')->get()->map(function($s) {
             return [
                 'public_id'       => $s->public_id,
-
-                // Changed from 'academicYear' to 'academic_year'
                 'academic_year'   => $s->academic_year,
-
-                // Changed from "number".$n to raw integer, and key to 'semester_number'
                 'semester_number' => (int) $s->semester_number,
-
-                // Changed from 'startDate' to 'start_date' and generic string format
                 'start_date'      => $s->start_date->format('Y-m-d'),
-
-                // Changed from 'lengthWeeks' to 'length_weeks'
                 'length_weeks'    => (int) $s->length_weeks,
-
-                // Changed from 'isActive' to 'is_active'
                 'is_active'       => (bool) $s->is_active,
             ];
         });
@@ -66,24 +58,69 @@ class SemesterController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'academic_year' => 'required|string', // e.g. "2024/2025"
+            'academic_year' => 'required|string',
             'semester_number' => 'required|integer|in:1,2,3',
             'start_date' => 'required|date',
             'length_weeks' => 'required|integer|min:1',
             'is_active' => 'boolean'
         ]);
 
-        // If setting this as active, deactivate all others first
-        if ($request->is_active) {
-            Semester::where('is_active', true)->update(['is_active' => false]);
+        // 1. Create Semester
+        $semester = \DB::transaction(function () use ($request, $validated) {
+            if ($request->is_active) {
+                Semester::where('is_active', true)->update(['is_active' => false]);
+            }
+            return Semester::create($validated);
+        });
+
+        // 2. Trigger Bulk Enrollment (Only if active)
+        if ($semester->is_active) {
+            $this->triggerBulkEnrollment($semester);
         }
 
-        $semester = Semester::create($validated);
-
         return response()->json([
-            'message' => 'Semester created successfully',
+            'message' => 'Semester created and enrollment processing started.',
             'data' => $semester
         ], 201);
+    }
+
+    protected function triggerBulkEnrollment(Semester $semester)
+    {
+        Log::info("Starting Bulk Enrollment for Semester: " . $semester->id);
+        // Define if this is the "Start of Academic Year" logic
+        // Assuming semester_number 1 is the start of the year.
+        $isStartOfYear = ($semester->semester_number == 1);
+
+        $count = Student::where('status', 'active')->count();
+        Log::info("Found {$count} active students.");
+
+        if ($count === 0) {
+            Log::warning("No active students found. Aborting batch.");
+            return;
+        }
+
+        // Fetch all active students
+        // We use cursor() or chunk() to avoid loading all into memory
+        $students = Student::where('status', 'active')->select('id')->cursor();
+
+        $jobs = [];
+        foreach ($students as $student) {
+            $jobs[] = new EnrollStudentForSemester(
+                $student->id,
+                $semester->id,
+                $isStartOfYear
+            );
+        }
+
+        Log::info("Dispatching batch with " . count($jobs) . " jobs.");
+        // Chunking the jobs into batch (Bus::batch accepts array, careful with memory)
+        // If > 2000 students, use chunks. Here is a safer way:
+        $batch = Bus::batch($jobs)
+            ->name('Semester Enrollment: ' . $semester->academic_year)
+            ->allowFailures()
+            ->dispatch();
+
+        Log::info("Batch Dispatched. ID: " . $batch->id);
     }
 
     /**

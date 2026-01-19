@@ -145,7 +145,7 @@ Route::prefix('v1')->group(function () {
                 Route::get('/', 'index');
                 Route::get('/{publicId}', 'show');
             });
-            Route::post('courses/{course_public_id}/grades', 'GradeController@store');
+            Route::post('courses/{course_public_id}/grades', 'GradeController@submitBatch');
         });
 
 

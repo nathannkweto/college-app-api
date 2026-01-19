@@ -13,6 +13,7 @@ return new class extends Migration
         Schema::create('departments', function (Blueprint $table) {
             $table->id();
             $table->uuid('public_id')->unique();
+
             $table->string('name');
             $table->string('code')->unique();
             $table->timestamps();
@@ -22,6 +23,7 @@ return new class extends Migration
         Schema::create('qualifications', function (Blueprint $table) {
             $table->id();
             $table->uuid('public_id')->unique();
+
             $table->string('name');
             $table->string('code');
             $table->timestamps();
@@ -31,6 +33,7 @@ return new class extends Migration
         Schema::create('programs', function (Blueprint $table) {
             $table->id();
             $table->uuid('public_id')->unique();
+
             $table->string('name');
             $table->string('code')->unique();
             $table->integer('total_semesters')->default(8);

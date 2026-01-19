@@ -83,6 +83,12 @@ jobs:
             MAIL_ENCRYPTION=${{ secrets.MAIL_ENCRYPTION }}
             MAIL_FROM_ADDRESS=${{ secrets.MAIL_FROM_ADDRESS }}
             MAIL_FROM_NAME=${{ secrets.MAIL_FROM_NAME }}
+            GOOGLE_CLOUD_PROJECT_ID=${{ env.PROJECT_ID }}
+            GOOGLE_CLOUD_LOCATION=${{ env.REGION }}
+            GOOGLE_CLOUD_TASKS_QUEUE=${{ secrets.GOOGLE_CLOUD_TASKS_QUEUE }}
+            GOOGLE_CLOUD_RUN_SERVICE_NAME=${{ env.SERVICE_NAME }}
+            GOOGLE_CLOUD_SERVICE_ACCOUNT=${{ secrets.GOOGLE_CLOUD_SERVICE_ACCOUNT }}
+            QUEUE_CONNECTION=${{ secrets.QUEUE_CONNECTION }}
 
       # 7. Update or Create the Cloud Run Job
       - name: 'Update Cloud Run Job'

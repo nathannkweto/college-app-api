@@ -3,14 +3,14 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\RegisterLecturer;
 use App\Models\Lecturer;
 use App\Models\Department;
-use App\Models\User;
 use App\Services\NotificationService; // Import the Service
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\LazyCollection;
 
 class LecturerController extends Controller
 {
@@ -75,70 +75,72 @@ class LecturerController extends Controller
             'first_name' => 'required|string',
             'last_name' => 'required|string',
             'email' => 'required|email|unique:users,email',
-            'department_public_id' => 'required|exists:departments,public_id',
+            'department_code' => 'required|exists:departments,code',
             'gender' => 'required|in:M,F',
             'title' => 'required|string',
-            'national_id' => 'required|string|unique:lecturers,national_id',
-            'dob' => 'required|date',
+            'nrc_number' => 'required|string|unique:lecturers,national_id',
+            'date_of_birth' => 'required|date',
             'address' => 'required|string',
-            'phone' => 'required|string',
+            'phone_number' => 'required|string',
         ]);
 
-        // --- 1. COMMENTED OUT TRANSACTION START ---
-        // $registrationResult = DB::transaction(function () use ($validated) {
 
-        $dept = Department::where('public_id', $validated['department_public_id'])->firstOrFail();
+        RegisterLecturer::dispatchSync($validated);
 
-        // A. Generate Lecturer ID (e.g. LEC-CS-001)
-        $prefix = "LEC";
-        $deptCode = $dept->code ?? 'GEN';
-        $sequence = Lecturer::where('department_id', $dept->id)->count() + 1;
-        $lecturerId = sprintf("%s-%s-%03d", $prefix, $deptCode, $sequence);
+        return response()->json(['message' => 'Lecturer registration queued.'], 202);
+    }
 
-        // B. Create User Login
-        $user = User::create([
-            'name' => $validated['title'] . ' ' . $validated['last_name'],
-            'email' => $validated['email'],
-            'password' => Hash::make($lecturerId),
-            'role' => 'LECTURER',
+    public function batchUpload(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:csv,txt',
         ]);
 
-        // C. Create Lecturer Profile
-        $lecturer = Lecturer::create([
-            'user_id' => $user->id,
-            'first_name' => $validated['first_name'],
-            'last_name' => $validated['last_name'],
-            'email' => $validated['email'],
-            'department_id' => $dept->id,
-            'gender' => $validated['gender'],
-            'title' => $validated['title'],
-            'lecturer_id' => $lecturerId,
-            'national_id' => $validated['national_id'],
-            'dob' => $validated['dob'],
-            'address' => $validated['address'],
-            'phone' => $validated['phone'],
-        ]);
+        // 1. Store the file temporarily
+        $relativePath = $request->file('file')->store('temp');
 
-        // IMPORTANT: Instead of 'return', we manually assign the variable
-        // so the script continues to the email section below.
-        $registrationResult = [
-            'user' => $user,
-            'lecturer_id' => $lecturerId,
-        ];
+        // 2. Read the file efficiently using LazyCollection (Low Memory usage)
+        // We defer the heavy lifting to the queue dispatch
+        $jobs = LazyCollection::make(function () use ($relativePath) {
+            $handle = fopen(Storage::path($relativePath), 'r');
+            // Skip Header Row?
+            fgetcsv($handle);
 
-        // --- 2. COMMENTED OUT TRANSACTION END ---
-        // });
+            while (($row = fgetcsv($handle)) !== false) {
+                // DATA CLEANUP: Trim whitespace from all fields
+                $row = array_map('trim', $row);
 
-        // D. Send Welcome Email (Now $registrationResult exists!)
-        $this->notifier->sendWelcomeEmail(
-            $registrationResult['user'],
-            $registrationResult['lecturer_id'],
-            'lecturer'
-        );
+                // SKIP empty rows
+                if (count($row) < 10) continue;
+
+                // Map CSV row to Job Data
+                yield new RegisterLecturer([
+                    'last_name' => $row[0],
+                    'first_name' => $row[1],
+                    'nrc_number' => $row[2],
+                    'gender' => $row[3],
+                    'title' => $row[4],
+                    'date_of_birth' => $row[5],
+                    'address' => $row[6],
+                    'email' => $row[7],
+                    'phone_number' => $row[8],
+                    'department_code' => $row[9],
+                ]);
+            }
+            fclose($handle);
+        });
+
+        // 3. Create the Batch
+        // Note: We convert the LazyCollection to an array for the batch() method.
+        $batch = Bus::batch($jobs->toArray())
+            ->name('Lecturer CSV Import')
+            ->allowFailures()
+            ->dispatch();
 
         return response()->json([
-            'message' => 'Lecturer registered successfully',
-            'lecturer_id' => $registrationResult['lecturer_id'],
-        ], 201);
+            'message' => 'Import started.',
+            'batch_id' => $batch->id
+        ], 202);
+
     }
 }

@@ -17,6 +17,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \App\Http\Middleware\CheckRole::class,
         ]);
         $middleware->prepend(\Illuminate\Http\Middleware\HandleCors::class);
+        $middleware->validateCsrfTokens(except: [
+            '/_google-cloud-tasks/*' // The package uses this route structure
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

@@ -18,19 +18,27 @@ class ScheduleController extends Controller
             return response()->json(['message' => 'Lecturer profile not found.'], 404);
         }
 
-        $activeSemester = Semester::active();
+        // 1. Get Active Semester
+        // Ensure your Semester model has a scopeActive() or similar logic
+        $activeSemester = Semester::where('is_active', true)->first();
 
         if (!$activeSemester) {
             return response()->json(['data' => []]);
         }
 
+        // 2. Fetch Schedule
+        // Since timetable_entries doesn't have lecturer_id, we check the related programCourse.
         $scheduleData = TimetableEntry::query()
-            ->with(['course'])
-            ->where('lecturer_id', $lecturer->id)
+            ->with(['programCourse.course']) // Eager load deep relationship
             ->where('semester_id', $activeSemester->id)
+            ->whereHas('programCourse', function ($query) use ($lecturer) {
+                // This assumes the 'program_courses' table has the 'lecturer_id'
+                $query->where('lecturer_id', $lecturer->id);
+            })
             ->orderBy('start_time')
             ->get();
 
+        // 3. Define Day Mapping
         $dayMapping = [
             'MON' => 'Monday',
             'TUE' => 'Tuesday',
@@ -40,27 +48,35 @@ class ScheduleController extends Controller
             'SAT' => 'Saturday',
             'SUN' => 'Sunday',
         ];
-        // ADDED: 'use ($scheduleData)' allows the closure to access the results
+
+        // 4. Transform Data
         $formattedSchedule = collect($dayMapping)->map(function ($dayName, $shortCode) use ($scheduleData) {
+
+            // Filter entries for this specific day
             $classesForDay = $scheduleData->where('day', $shortCode)->map(function ($entry) {
+                // Safe navigation to get course details
+                $course = $entry->programCourse->course ?? null;
+
                 return [
-                    'start_time' => $this->formatTime($entry->start_time),
-                    'end_time'   => $this->formatTime($entry->end_time),
-                    'course_code' => $entry->course->code ?? 'N/A',
-                    'course_name' => $entry->course->name ?? 'Unknown',
+                    'start_time'  => $this->formatTime($entry->start_time),
+                    'end_time'    => $this->formatTime($entry->end_time),
+                    'course_code' => $course ? $course->code : 'N/A',
+                    'course_name' => $course ? $course->name : 'Unknown',
                     'location'    => $entry->location ?? 'TBA',
+                    // Use the short code (MON) to fetch color
                     'color_hex'   => $this->getDayColor($entry->day),
                 ];
             })->values();
 
             return [
-                'day_name' => $dayName,
+                'day_name'        => $dayName,
+                // If no classes, it's a research/free day
                 'is_research_day' => $classesForDay->isEmpty(),
-                'classes' => $classesForDay
+                'classes'         => $classesForDay
             ];
         });
 
-        return response()->json(['data' => $formattedSchedule]);
+        return response()->json(['data' => $formattedSchedule->values()]);
     }
 
     /**
@@ -72,18 +88,20 @@ class ScheduleController extends Controller
     }
 
     /**
-     * Optional: Helper to provide distinct colors for the UI based on day
+     * Returns a color hex based on the day short code (MON, TUE...)
      */
-    private function getDayColor($day)
+    private function getDayColor($shortDayCode)
     {
         $colors = [
-            'Monday'    => '#4CAF50', // Green
-            'Tuesday'   => '#2196F3', // Blue
-            'Wednesday' => '#FF9800', // Orange
-            'Thursday'  => '#9C27B0', // Purple
-            'Friday'    => '#F44336', // Red
+            'MON' => '#4CAF50', // Green
+            'TUE' => '#2196F3', // Blue
+            'WED' => '#FF9800', // Orange
+            'THU' => '#9C27B0', // Purple
+            'FRI' => '#F44336', // Red
+            'SAT' => '#607D8B', // Blue Grey
+            'SUN' => '#607D8B', // Blue Grey
         ];
 
-        return $colors[$day] ?? '#607D8B'; // Default Slate
+        return $colors[$shortDayCode] ?? '#9E9E9E'; // Default Grey
     }
 }

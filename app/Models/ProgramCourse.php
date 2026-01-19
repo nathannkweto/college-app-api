@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\Pivot;
 class ProgramCourse extends Pivot
 {
     // Explicitly define table name since it follows the pivot convention
-    protected $table = 'program_course';
+    protected $table = 'program_courses';
 
     // Since your migration has $table->id(), we enable incrementing
     public $incrementing = true;
@@ -21,6 +21,11 @@ class ProgramCourse extends Pivot
     public function course()
     {
         return $this->belongsTo(Course::class);
+    }
+
+    public function lecturer()
+    {
+        return $this->belongsTo(Lecturer::class, 'lecturer_id');
     }
 
     // Relationship to the Exam Paper

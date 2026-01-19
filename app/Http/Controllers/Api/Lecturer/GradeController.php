@@ -3,75 +3,66 @@
 namespace App\Http\Controllers\Api\Lecturer;
 
 use App\Http\Controllers\Controller;
-use App\Models\Course;
-use App\Models\ExamResult;
-use App\Models\Semester;
-use App\Models\Student;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Bus;
+use App\Jobs\ProcessStudentMark;
+use App\Models\Student; // Ensure this is imported
 
 class GradeController extends Controller
 {
-    public function store(Request $request, string $coursePublicId)
+    public function submitBatch(Request $request)
     {
-        $request->validate([
-            'students' => 'required|array',
-            'students.*.student_public_id' => 'required|uuid',
-            'students.*.total_score' => 'required|numeric|min:0|max:100',
+        // 1. Validate using the NEW field names (Public API Contract)
+        $validated = $request->validate([
+            'program_course_id' => 'required|integer|exists:program_courses,id',
+            'semester'          => 'required|string',
+            'submissions'       => 'required|array',
+
+            // Validate UUID exists in the public_id column
+            'submissions.*.student_public_id' => 'required|exists:students,public_id',
+            // Validate score (mapped from 'total_score')
+            'submissions.*.total_score'       => 'required|numeric|min:0|max:100',
         ]);
 
-        // 1. Resolve Context
-        $course = Course::where('public_id', $coursePublicId)->firstOrFail();
-        $activeSemester = Semester::where('is_active', true)->firstOrFail();
+        // 2. Resolve Student UUIDs to Internal IDs
+        // We need to fetch the internal integer IDs to pass to ProcessStudentMark
+        $publicIds = array_column($validated['submissions'], 'student_public_id');
 
-        // 2. Optimization: Get all student IDs at once to avoid N+1 queries
-        $studentPublicIds = collect($request->students)->pluck('student_public_id');
-        $students = Student::whereIn('public_id', $studentPublicIds)->get()->keyBy('public_id');
+        // Map: 'uuid-string' => 101 (integer)
+        $studentMap = Student::whereIn('public_id', $publicIds)
+            ->pluck('id', 'public_id');
 
-        // 3. Process Grades in Transaction
-        DB::transaction(function () use ($request, $course, $activeSemester, $students) {
-            foreach ($request->students as $item) {
-                $student = $students->get($item['student_public_id']);
+        $jobs = [];
+        foreach ($validated['submissions'] as $submission) {
+            $publicId = $submission['student_public_id'];
 
-                if (!$student) continue;
+            // Only process if we found the internal ID
+            if (isset($studentMap[$publicId])) {
+                $internalStudentId = $studentMap[$publicId];
 
-                $score = $item['total_score'];
-                $gradeDetails = $this->calculateGrade($score);
-
-                // 4. Update or Create Result (Matching your migration columns)
-                ExamResult::updateOrCreate(
-                    [
-                        'student_id' => $student->id,
-                        'course_id'  => $course->id,
-                        'semester_id' => $activeSemester->id,
-                    ],
-                    [
-                        'score'        => $score,
-                        'grade'        => $gradeDetails['grade'],
-                        'mention'      => $gradeDetails['mention'],
-                        // Removed 'status' as it's not in your migration
-                        'is_passed'    => $gradeDetails['is_passed'],
-                        'is_published' => false,
-                    ]
+                $jobs[] = new ProcessStudentMark(
+                    $internalStudentId,              // Internal ID (Converted)
+                    $validated['program_course_id'], // Internal ID (Passed directly)
+                    $validated['semester'],
+                    $submission['total_score']       // Score (Renamed from mark)
                 );
             }
-        });
+        }
 
-        return response()->json(['message' => 'Grades submitted successfully']);
-    }
+        if (empty($jobs)) {
+            return response()->json(['message' => 'No valid student records found.'], 422);
+        }
 
-    /**
-     * Updated Helper: Returns is_passed as a boolean
-     */
-    private function calculateGrade($score)
-    {
-        if ($score >= 80) return ['grade' => 'A', 'is_passed' => true,  'mention' => 'Excellent'];
-        if ($score >= 70) return ['grade' => 'B', 'is_passed' => true,  'mention' => 'Very Good'];
-        if ($score >= 60) return ['grade' => 'C', 'is_passed' => true,  'mention' => 'Good'];
-        if ($score >= 50) return ['grade' => 'D', 'is_passed' => true,  'mention' => 'Satisfactory'];
-        if ($score >= 45) return ['grade' => 'E', 'is_passed' => true,  'mention' => 'Sufficient'];
+        // 3. Dispatch Batch
+        $batch = Bus::batch($jobs)
+            ->name('Grading Batch: ' . $validated['program_course_id'])
+            ->allowFailures()
+            ->dispatch();
 
-        // Fail condition
-        return ['grade' => 'F', 'is_passed' => false, 'mention' => 'Fail'];
+        // 4. Return response
+        return response()->json([
+            'message' => 'Grades are being processed.',
+            'batch_id' => $batch->id
+        ], 202);
     }
 }

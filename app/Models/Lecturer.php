@@ -10,11 +10,6 @@ class Lecturer extends Model
     use HasPublicId;
 
     protected $guarded = ['id'];
-    protected $fillable = [
-        'lecturer_id', 'user_id', 'first_name', 'last_name',
-        'email', 'title', 'gender', 'department_id', 'national_id',
-        'dob', 'address', 'phone',
-    ];
 
     protected $casts = [
         'dob' => 'date',

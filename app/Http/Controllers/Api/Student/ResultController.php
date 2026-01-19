@@ -3,7 +3,8 @@
 namespace App\Http\Controllers\Api\Student;
 
 use App\Http\Controllers\Controller;
-use App\Models\Semester;
+use App\Models\Enrollment;
+use App\Models\ResultPublication;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -11,111 +12,76 @@ class ResultController extends Controller
 {
     public function index(Request $request)
     {
-        // 1. FIXED: Use 'profile' to match your other controllers
-        $student = Auth::user()->profile;
+        // 1. Resolve Student Profile
+        $student = Auth::user()->profile; // Assumes relation user -> hasOne profile (Student model)
 
-        // Safety check
-        if (!$student || !$student->program) {
-            return response()->json(['data' => ['gpa' => 0.0, 'semesters' => []]]);
+        if (!$student) {
+            return response()->json(['data' => ['semesters' => []]]);
         }
 
-        $programId = $student->program->id;
-
-        // 2. Fetch History: Exam Results
-        // We eager load 'course.programs' to access the pivot table for semester_sequence
-        $examResults = $student->examResults()
-            ->with(['course.programs' => function($q) use ($programId) {
-                $q->where('program_id', $programId);
-            }, 'semester'])
+        // 2. Fetch all Enrollments for this student
+        $enrollments = Enrollment::where('student_id', $student->id)
+            ->with(['semester', 'programCourse.course'])
             ->get();
 
-        // 3. Fetch Current State
-        $activeSemester = Semester::where('is_active', true)->first();
-        // Use the relationship we defined in the Student model earlier
-        $currentCourses = $student->currentCourses()->get();
+        // 3. Fetch Published Semesters for THIS Student's Program
+        // We strictly filter by the student's program_id to ensure they don't see
+        // results meant for other departments.
+        $publishedSemesterIds = ResultPublication::where('program_id', $student->program_id)
+            ->where('is_published', true)
+            ->pluck('semester_id')
+            ->toArray();
 
-        // 4. Merge Logic
-        $transcriptData = $examResults->map(function ($result) use ($programId) {
+        // 4. Transform & Process Data
+        $transcriptData = $enrollments->map(function ($enrollment) use ($publishedSemesterIds) {
 
-            // Try to find the sequence for this course in this program
-            $pivot = $result->course->programs->where('id', $programId)->first()?->pivot;
-            $seq = $pivot ? $pivot->semester_sequence : 0;
+            // A. Determine Visibility
+            // True only if the publication record exists for (Student's Program + This Semester)
+            $isPublished = in_array($enrollment->semester_id, $publishedSemesterIds);
 
-            // Calculate Title
+            // B. Resolve Course Info
+            $pCourse = $enrollment->programCourse;
+            $course = $pCourse ? $pCourse->course : null;
+            $courseName = $course ? $course->name : 'Unknown Course';
+
+            // C. Calculate "Year X - Semester Y" Label based on Sequence
+            // Note: This relies on your curriculum sequence (1 = Year 1 Sem 1, etc.)
+            $seq = $pCourse ? $pCourse->semester_sequence : 0;
+
             if ($seq > 0) {
                 $year = ceil($seq / 2);
                 $semNum = ($seq % 2 == 0) ? 2 : 1;
-                $semName = "Year $year - Semester $semNum";
+                $semesterLabel = "Year $year - Semester $semNum";
             } else {
-                // Fallback if pivot data is missing
-                $semName = $result->semester->name ?? 'Unknown Semester';
+                $semesterLabel = $enrollment->semester->name ?? 'Unknown Semester';
             }
 
-            // Published Logic
-            $isPublished = (bool)$result->is_published;
-
             return [
-                'semester_sort' => $seq > 0 ? $seq : 0, // Sort key
-                'semester_name' => $semName,
-                'course_id'     => $result->course_id,
-                'course_name'   => $result->course->name ?? 'Unknown Course',
-                // IF published, show grade, ELSE show N/A
-                'grade'         => $isPublished ? $result->grade : 'N/A',
-                'points'        => $isPublished ? (float)$result->points : 0.0,
+                'sort_sequence' => $seq > 0 ? $seq : 999,
+                'semester_name' => $semesterLabel,
+                'course_name'   => $courseName,
+
+                // D. Mask Data if Not Published
+                // If not published, we return 'Pending' or null to protect the data
+                'grade'         => $isPublished ? $enrollment->grade : 'PENDING',
+                'score'         => $isPublished ? $enrollment->score : null,
                 'is_published'  => $isPublished,
             ];
         });
 
-        // Append Current Courses (if active semester exists)
-        if ($activeSemester) {
-            $existingCourseIds = $transcriptData
-                ->pluck('course_id')
-                ->toArray();
-
-            foreach ($currentCourses as $course) {
-                // Only add if not already in the list (prevents duplicates)
-                if (!in_array($course->id, $existingCourseIds)) {
-
-                    // Fetch sequence for current course
-                    $pivot = $course->programs->where('id', $programId)->first()?->pivot;
-                    $seq = $pivot ? $pivot->semester_sequence : 999;
-
-                    if ($seq < 999 && $seq > 0) {
-                        $year = ceil($seq / 2);
-                        $semNum = ($seq % 2 == 0) ? 2 : 1;
-                        $semName = "Year $year - Semester $semNum";
-                    } else {
-                        $semName = $activeSemester->name;
-                    }
-
-                    $transcriptData->push([
-                        'semester_sort' => $seq,
-                        'semester_name' => $semName,
-                        'course_id'     => $course->id,
-                        'course_name'   => $course->name,
-                        'grade'         => 'N/A', // Ongoing courses are N/A
-                        'points'        => 0.0,
-                        'is_published'  => false,
-                    ]);
-                }
-            }
-        }
-
-        // 5. Calculate GPA (Only Published)
-        $gpa = $this->calculateGPA($examResults->where('is_published', true));
-
-        // 6. Group & Sort
+        // 5. Group by Semester & Sort
         $groupedSemesters = $transcriptData
-            ->sortBy('semester_sort') // Sort: Year 1 Sem 1 -> Year 1 Sem 2 ...
+            ->sortBy('sort_sequence') // Chronological order (Year 1 Sem 1 -> Year 1 Sem 2...)
             ->groupBy('semester_name')
             ->map(function ($rows, $semesterName) {
                 return [
                     'semester_name' => $semesterName,
-                    'results' => $rows->map(function ($r) {
+                    'results'       => $rows->map(function ($r) {
                         return [
-                            'course_name' => $r['course_name'],
-                            'grade'       => $r['grade'],
-                            'points'      => $r['points'],
+                            'course_name'  => $r['course_name'],
+                            'grade'        => $r['grade'],
+                            'score'        => $r['score'],
+                            'is_published' => $r['is_published'],
                         ];
                     })->values()
                 ];
@@ -124,17 +90,8 @@ class ResultController extends Controller
 
         return response()->json([
             'data' => [
-                'gpa' => $gpa,
                 'semesters' => $groupedSemesters
             ]
         ]);
-    }
-
-    private function calculateGPA($publishedResults)
-    {
-        if ($publishedResults->isEmpty()) return 0.0;
-        $validScores = $publishedResults->whereNotNull('points');
-        if ($validScores->isEmpty()) return 0.0;
-        return round($validScores->avg('points'), 2);
     }
 }

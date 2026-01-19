@@ -12,8 +12,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // 5. PROGRAM_COURSE
-        Schema::create('program_course', function (Blueprint $table) {
+        Schema::create('program_courses', function (Blueprint $table) {
             $table->id();
             $table->foreignId('program_id')->constrained()->cascadeOnDelete();
             $table->foreignId('course_id')->constrained()->cascadeOnDelete();
@@ -27,6 +26,21 @@ return new class extends Migration
 
             $table->unique(['program_id', 'course_id']);
         });
+
+        Schema::create('enrollments', function (Blueprint $table) {
+            $table->id();
+
+            $table->foreignId('student_id')->constrained();
+            $table->foreignId('program_course_id')->constrained();
+            $table->foreignId('semester_id')->constrained();
+
+            $table->decimal('score', 5, 2);
+            $table->string('grade');
+
+            $table->timestamps();
+
+            $table->unique(['student_id', 'program_course_id', 'semester_id']);
+        });
     }
 
     /**
@@ -34,6 +48,7 @@ return new class extends Migration
      */
     public function down(): void
     {
+        Schema::dropIfExists('enrollment');
         Schema::dropIfExists('program_course');
     }
 };
