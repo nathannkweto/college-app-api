@@ -93,14 +93,14 @@ jobs:
       # 7. Update or Create the Cloud Run Job
       - name: 'Update Cloud Run Job'
         run: |-
-          gcloud run jobs deploy tinker-maintenance \
+          gcloud run jobs deploy admin-accounts \
             --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
             --region ${{ env.REGION }} \
             --set-env-vars="DB_CONNECTION=pgsql,DB_HOST=${{ secrets.DB_HOST }},DB_DATABASE=${{ secrets.DB_DATABASE }},DB_USERNAME=${{ secrets.DB_USERNAME }},DB_PASSWORD=${{ secrets.DB_PASSWORD }}" \
             --command="php" \
-            --args="artisan,tinker,scripts/seed.php"
+            --args="artisan,tinker,scripts/admins.php"
 
       # 8. Execute the Job (on every deploy)
       - name: 'Execute Cloud Run Job'
         run: |-
-          gcloud run jobs execute tinker-maintenance --region ${{ env.REGION }} --wait
+          gcloud run jobs execute admin-accounts --region ${{ env.REGION }} --wait
