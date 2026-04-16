@@ -1,7 +1,6 @@
 <?php
 
 return [
-
     /*
     | The 'paths' must match the URL pattern of your API.
     */
@@ -17,9 +16,13 @@ return [
     ],
 
     /*
-    | Allowed origins (comma-separated in .env / GitHub secret)
+    | FOR TESTING
+    | GitHub Pages origin.
     */
-    'allowed_origins' => json_decode(env('CORS_ALLOWED_ORIGINS', '[]'), true),
+    'allowed_origins' => [
+        'https://matemcollege.com',
+        'https://*.matemcollege.com',
+    ],
 
     'allowed_origins_patterns' => [],
 
