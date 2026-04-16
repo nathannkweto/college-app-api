@@ -33,8 +33,8 @@ jobs:
       - name: 'Build and Push Container'
         run: |-
           gcloud auth configure-docker
-          docker build -t gcr.io/$PROJECT_ID/$SERVICE_NAME:${{ github.sha }} .
-          docker push gcr.io/$PROJECT_ID/$SERVICE_NAME:${{ github.sha }}
+          docker build -t us-east1-docker.pkg.dev/$PROJECT_ID/college-app-repo/$SERVICE_NAME:${{ github.sha }} .
+          docker push us-east1-docker.pkg.dev/$PROJECT_ID/college-app-repo/$SERVICE_NAME:${{ github.sha }}
 
       # 4. Setup PHP (Required to run migrations in this isolated job)
       - name: Setup PHP for Migrations
