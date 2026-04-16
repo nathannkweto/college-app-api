@@ -11,37 +11,35 @@ env:
   SERVICE_NAME: college-app
 
 jobs:
-  # -----------------------------------------------------------------
-  # JOB 1: DEPLOY (Builds Docker + Migrates Neon + Pushes to Cloud Run)
-  # -----------------------------------------------------------------
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
       # 1. Authenticate with Google Cloud
-      - id: 'auth'
-        uses: 'google-github-actions/auth@v2'
+      - id: auth
+        uses: google-github-actions/auth@v2
         with:
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
       # 2. Setup gcloud CLI
-      - name: 'Set up Cloud SDK'
-        uses: 'google-github-actions/setup-gcloud@v2'
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
 
-      # 3. Configure Docker for Artifact Registry
+      # 3. Configure Docker
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker us-east1-docker.pkg.dev
-      # 4. Build and Push Docker Image
-      - name: 'Build and Push Container'
-        run: |-
-          gcloud auth configure-docker
+
+      # 4. Build & Push Image
+      - name: Build and Push Container
+        run: |
           docker build -t us-east1-docker.pkg.dev/$PROJECT_ID/college-app-repo/$SERVICE_NAME:${{ github.sha }} .
           docker push us-east1-docker.pkg.dev/$PROJECT_ID/college-app-repo/$SERVICE_NAME:${{ github.sha }}
 
       # 5. Deploy to Cloud Run
-      - name: 'Deploy to Cloud Run'
-        uses: 'google-github-actions/deploy-cloudrun@v2'
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
         with:
           service: ${{ env.SERVICE_NAME }}
           image: us-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/college-app-repo/${{ env.SERVICE_NAME }}:${{ github.sha }}
@@ -51,13 +49,17 @@ jobs:
             APP_KEY=${{ secrets.APP_KEY }}
             APP_DEBUG=false
             LOG_CHANNEL=stderr
+
             DB_CONNECTION=pgsql
             DB_HOST=${{ secrets.DB_HOST }}
             DB_PORT=5432
             DB_DATABASE=${{ secrets.DB_DATABASE }}
             DB_USERNAME=${{ secrets.DB_USERNAME }}
             DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+
+            # 🔥 IMPORTANT: MUST be comma-separated, no quotes
             CORS_ALLOWED_ORIGINS=${{ secrets.CORS_ALLOWED_ORIGINS }}
+
             MAIL_MAILER=${{ secrets.MAIL_MAILER }}
             MAIL_HOST=${{ secrets.MAIL_HOST }}
             MAIL_PORT=${{ secrets.MAIL_PORT }}
@@ -66,6 +68,7 @@ jobs:
             MAIL_ENCRYPTION=${{ secrets.MAIL_ENCRYPTION }}
             MAIL_FROM_ADDRESS=${{ secrets.MAIL_FROM_ADDRESS }}
             MAIL_FROM_NAME=${{ secrets.MAIL_FROM_NAME }}
+
             GOOGLE_CLOUD_PROJECT_ID=${{ env.PROJECT_ID }}
             GOOGLE_CLOUD_LOCATION=${{ env.REGION }}
             GOOGLE_CLOUD_TASKS_QUEUE=${{ secrets.GOOGLE_CLOUD_TASKS_QUEUE }}
@@ -73,9 +76,17 @@ jobs:
             GOOGLE_CLOUD_SERVICE_ACCOUNT=${{ secrets.GOOGLE_CLOUD_SERVICE_ACCOUNT }}
             QUEUE_CONNECTION=${{ secrets.QUEUE_CONNECTION }}
 
-      # 6. Update or Create the Cloud Run Job
-      - name: 'Update Cloud Run Job'
-        run: |-
+      # 6. 🔥 FORCE CLEAR CONFIG CACHE (THIS IS WHAT FIXES YOUR "ONLY FIRST ORIGIN" ISSUE)
+      - name: Clear Laravel Config Cache
+        run: |
+          echo "Clearing config cache..."
+          gcloud run services update $SERVICE_NAME \
+            --region $REGION \
+            --update-env-vars="FORCE_CONFIG_RELOAD=$(date +%s)"
+
+      # 7. Cloud Run Job
+      - name: Update Cloud Run Job
+        run: |
           gcloud run jobs deploy admin-accounts \
             --image us-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/college-app-repo/${{ env.SERVICE_NAME }}:${{ github.sha }} \
             --region ${{ env.REGION }} \
@@ -83,7 +94,7 @@ jobs:
             --command="php" \
             --args="artisan,tinker,scripts/admins.php"
 
-      # 7. Execute the Job (on every deploy)
-      - name: 'Execute Cloud Run Job'
-        run: |-
+      # 8. Execute Job
+      - name: Execute Cloud Run Job
+        run: |
           gcloud run jobs execute admin-accounts --region ${{ env.REGION }} --wait
