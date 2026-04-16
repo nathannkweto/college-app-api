@@ -29,21 +29,24 @@ jobs:
       - name: 'Set up Cloud SDK'
         uses: 'google-github-actions/setup-gcloud@v2'
 
-      # 3. Build and Push Docker Image
+      # 3. Configure Docker for Artifact Registry
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker us-east1-docker.pkg.dev
+      # 4. Build and Push Docker Image
       - name: 'Build and Push Container'
         run: |-
           gcloud auth configure-docker
           docker build -t us-east1-docker.pkg.dev/$PROJECT_ID/college-app-repo/$SERVICE_NAME:${{ github.sha }} .
           docker push us-east1-docker.pkg.dev/$PROJECT_ID/college-app-repo/$SERVICE_NAME:${{ github.sha }}
 
-      # 4. Setup PHP (Required to run migrations in this isolated job)
+      # 5. Setup PHP (Required to run migrations in this isolated job)
       - name: Setup PHP for Migrations
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
           extensions: pdo_pgsql, pgsql
 
-      # 5. Run Migrations against Neon
+      # 6. Run Migrations against Neon
       - name: Run Migrations
         run: |
           composer install --no-dev --prefer-dist --no-scripts --ignore-platform-reqs
@@ -56,12 +59,12 @@ jobs:
           DB_USERNAME: ${{ secrets.DB_USERNAME }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
 
-      # 6. Deploy to Cloud Run
+      # 7. Deploy to Cloud Run
       - name: 'Deploy to Cloud Run'
         uses: 'google-github-actions/deploy-cloudrun@v2'
         with:
           service: ${{ env.SERVICE_NAME }}
-          image: gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          image: us-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/college-app-repo/${{ env.SERVICE_NAME }}:${{ github.sha }}
           region: ${{ env.REGION }}
           flags: '--allow-unauthenticated'
           env_vars: |
@@ -90,17 +93,17 @@ jobs:
             GOOGLE_CLOUD_SERVICE_ACCOUNT=${{ secrets.GOOGLE_CLOUD_SERVICE_ACCOUNT }}
             QUEUE_CONNECTION=${{ secrets.QUEUE_CONNECTION }}
 
-      # 7. Update or Create the Cloud Run Job
+      # 8. Update or Create the Cloud Run Job
       - name: 'Update Cloud Run Job'
         run: |-
           gcloud run jobs deploy admin-accounts \
-            --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+            --image us-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/college-app-repo/${{ env.SERVICE_NAME }}:${{ github.sha }} \
             --region ${{ env.REGION }} \
             --set-env-vars="DB_CONNECTION=pgsql,DB_HOST=${{ secrets.DB_HOST }},DB_DATABASE=${{ secrets.DB_DATABASE }},DB_USERNAME=${{ secrets.DB_USERNAME }},DB_PASSWORD=${{ secrets.DB_PASSWORD }}" \
             --command="php" \
             --args="artisan,tinker,scripts/admins.php"
 
-      # 8. Execute the Job (on every deploy)
+      # 9. Execute the Job (on every deploy)
       - name: 'Execute Cloud Run Job'
         run: |-
           gcloud run jobs execute admin-accounts --region ${{ env.REGION }} --wait
