@@ -19,9 +19,7 @@ return [
     /*
     | Allowed origins (comma-separated in .env / GitHub secret)
     */
-    'allowed_origins' => array_filter(
-        array_map('trim', explode(',', env('CORS_ALLOWED_ORIGINS', '')))
-    ),
+    'allowed_origins' => json_decode(env('CORS_ALLOWED_ORIGINS', '[]'), true),
 
     'allowed_origins_patterns' => [],
 
