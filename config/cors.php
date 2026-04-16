@@ -1,6 +1,7 @@
 <?php
 
 return [
+
     /*
     | The 'paths' must match the URL pattern of your API.
     */
@@ -16,10 +17,11 @@ return [
     ],
 
     /*
-    | FOR TESTING
-    | GitHub Pages origin.
+    | Allowed origins (comma-separated in .env / GitHub secret)
     */
-    'allowed_origins' => explode(',', env('CORS_ALLOWED_ORIGINS', '')),
+    'allowed_origins' => array_filter(
+        array_map('trim', explode(',', env('CORS_ALLOWED_ORIGINS', '')))
+    ),
 
     'allowed_origins_patterns' => [],
 
