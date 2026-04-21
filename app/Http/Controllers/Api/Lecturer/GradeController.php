@@ -54,15 +54,27 @@ class GradeController extends Controller
         }
 
         // 3. Dispatch Batch
-        $batch = Bus::batch($jobs)
-            ->name('Grading Batch: ' . $validated['program_course_id'])
-            ->allowFailures()
-            ->dispatch();
+        try {
+            $batch = Bus::batch($jobs)
+                ->name('Grading Batch: ' . $validated['program_course_id'])
+                ->allowFailures()
+                ->dispatch();
 
-        // 4. Return response
-        return response()->json([
-            'message' => 'Grades are being processed.',
-            'batch_id' => $batch->id
-        ], 202);
+            return response()->json([
+                'message' => 'Grades are being processed.',
+                'batch_id' => $batch->id
+            ], 202);
+        } catch (\Throwable $e) {
+            \Log::error('Grade batch dispatch failed', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'program_course_id' => $validated['program_course_id'],
+                'jobs_count' => count($jobs),
+            ]);
+
+            return response()->json([
+                'message' => 'Failed to dispatch grading batch.',
+            ], 500);
+        }
     }
 }

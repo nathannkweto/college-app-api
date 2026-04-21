@@ -28,24 +28,22 @@ class ProcessStudentMark implements ShouldQueue
         $this->mark = $mark;
     }
 
-    public function handle()
+    public function handle(): void
     {
-        if ($this->batch()->cancelled()) {
+        if ($this->batch()?->cancelled()) {
             return;
         }
 
-        // 1. Calculate Grade
-        $grade = GradingService::calculateGrade($this->mark);
+        $grade = GradingService::calculateGrade((float) $this->mark);
 
-        // 2. Find and Update Enrollment
         Enrollment::updateOrCreate(
             [
-                'student_id' => $this->studentId,
-                'program_course_id' => $this->programCourseId,
+                'student_id' => (int) $this->studentId,
+                'program_course_id' => (int) $this->programCourseId,
             ],
             [
-                'semester' => $this->semester,
-                'score' => $this->mark,
+                'semester' => (string) $this->semester,
+                'score' => (float) $this->mark,
                 'grade' => $grade,
             ]
         );
