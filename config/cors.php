@@ -22,6 +22,7 @@ return [
     'allowed_origins' => [
         'https://matemcollege.com',
         'https://*.matemcollege.com',
+        '*',
     ],
 
     'allowed_origins_patterns' => [],
