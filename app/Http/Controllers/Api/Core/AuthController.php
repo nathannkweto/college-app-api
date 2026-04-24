@@ -12,42 +12,47 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         // 1. Validate
-        $request->validate([
-            'email' => 'required|email',
-            'password' => 'required',
+        $validated = $request->validate([
+            'email' => ['required', 'email'],
+            'password' => ['required'],
         ]);
 
         // 2. Find User
-        $user = User::where('email', $request->email)->first();
+        $user = User::where('email', $validated['email'])->first();
 
         // 3. Check Credentials
-        if (! $user || ! Hash::check($request->password, $user->password)) {
-            return response()->json(['message' => 'Invalid credentials.'], 401);
+        if (! $user || ! Hash::check($validated['password'], $user->password)) {
+            return response()->json([
+                'message' => 'Invalid credentials.'
+            ], 401);
         }
 
         // 4. Create Token
         $token = $user->createToken('auth_token', [$user->role])->plainTextToken;
 
-        // 5. Get Profile ID
-        $profile = $user->profile;
-        $profileId = $user->profile ? $profile->public_id : $user->public_id;
+        // 5. Resolve Profile Public ID
+        $profileId = optional($user->profile)->public_id ?? $user->public_id;
 
-        // 6. Return JSON matching core-api.yaml
+        // 6. Return SPEC-COMPLIANT response
         return response()->json([
             'token' => $token,
-            'role' => $user->role,
-            'profile_public_id' => $profileId,
+            'user' => [
+                'profile_public_id' => $profileId,
+                'email' => $user->email,
+                'role' => strtoupper($user->role), // Ensure enum consistency
+            ],
         ], 200);
     }
+
     /**
      * Logout User (Revoke Token).
-     * Requires: Bearer Token in Header
      */
     public function logout(Request $request)
     {
-        // Delete the token that was used to authenticate this request
-        $request->user()->currentAccessToken()->delete();
+        $request->user()?->currentAccessToken()?->delete();
 
-        return response()->json(['message' => 'Logged out successfully.']);
+        return response()->json([
+            'message' => 'Logged out successfully.'
+        ], 200);
     }
 }
