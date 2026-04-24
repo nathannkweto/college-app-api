@@ -90,8 +90,10 @@ jobs:
           gcloud run jobs deploy admin-accounts \
             --image us-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/college-app-repo/${{ env.SERVICE_NAME }}:${{ github.sha }} \
             --region ${{ env.REGION }} \
-            --set-env-vars="DB_CONNECTION=pgsql,DB_HOST=${{ secrets.DB_HOST }},DB_DATABASE=${{ secrets.DB_DATABASE }},DB_USERNAME=${{ secrets.DB_USERNAME }},DB_PASSWORD=${{ secrets.DB_PASSWORD }}" \
+            --set-env-vars="DB_CONNECTION=mysql,DB_HOST=${{ secrets.DB_HOST }},DB_DATABASE=${{ secrets.DB_DATABASE }},DB_USERNAME=${{ secrets.DB_USERNAME }},DB_PASSWORD=${{ secrets.DB_PASSWORD }}" \
             --command="php" \
+            --vpc-connector matem \
+            --vpc-egress all \
             --args="artisan,tinker,scripts/admins.php"
 
       # 8. Execute Job
