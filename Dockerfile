@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y \
     libpng-dev \
     libonig-dev \
     libxml2-dev \
-    libpq-dev \
+    default-mysql-client \
     libzip-dev \
     zip \
     unzip \
@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y \
 
 # 2. Install PHP extensions
 # Added 'zip' (crucial for Excel/CSV uploads)
-RUN docker-php-ext-install pdo_pgsql mbstring exif pcntl bcmath gd zip
+RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip
 
 # 3. Enable Apache mod_rewrite
 RUN a2enmod rewrite headers
