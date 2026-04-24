@@ -6,40 +6,42 @@ return [
     */
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
 
-    'allowed_methods' => [
-        'GET',
-        'POST',
-        'PUT',
-        'PATCH',
-        'DELETE',
-        'OPTIONS',
-    ],
+    /*
+    | Allow all methods (GET, POST, OPTIONS, etc.)
+    */
+    'allowed_methods' => ['*'],
 
     /*
-    | FOR TESTING
-    | GitHub Pages origin.
+    | Remove the '*' from here! Only put specific, static URLs.
     */
     'allowed_origins' => [
         'https://matemcollege.com',
-        'https://*.matemcollege.com',
-        '*',
+        // Add your production Flutter Web URL here if it's different
     ],
 
-    'allowed_origins_patterns' => [],
-
-    'allowed_headers' => [
-        'Content-Type',
-        'Authorization',
-        'X-Requested-With',
-        'Accept',
-        'Origin',
+    /*
+    | 🔥 FIX: Use a Regex pattern to allow ANY localhost port for Flutter Web
+    */
+    'allowed_origins_patterns' => [
+        '#^http://localhost:\d+$#'
     ],
 
+    /*
+    | Allow all headers to prevent random blocks
+    */
+    'allowed_headers' => ['*'],
+
+    /*
+    | Headers the client is allowed to read
+    */
     'exposed_headers' => [
         'Authorization',
     ],
 
     'max_age' => 600,
 
+    /*
+    | Since this is true, we cannot use '*' in allowed_origins
+    */
     'supports_credentials' => true,
 ];
