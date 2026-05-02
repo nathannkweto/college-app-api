@@ -84,10 +84,66 @@ class LecturerController extends Controller
             'phone_number' => 'required|string',
         ]);
 
-
         RegisterLecturer::dispatchSync($validated);
 
         return response()->json(['message' => 'Lecturer registration queued.'], 202);
+    }
+
+    /**
+     * Update an existing Lecturer.
+     */
+    public function update(Request $request, $public_id)
+    {
+        $lecturer = Lecturer::where('public_id', $public_id)->firstOrFail();
+
+        $validated = $request->validate([
+            'first_name' => 'sometimes|required|string',
+            'last_name' => 'sometimes|required|string',
+            'email' => 'sometimes|required|email',
+            'department_code' => 'sometimes|required|exists:departments,code',
+            'gender' => 'sometimes|required|in:M,F',
+            'title' => 'sometimes|required|string',
+            'nrc_number' => 'sometimes|required|string|unique:lecturers,national_id,' . $lecturer->id,
+            'date_of_birth' => 'sometimes|required|date',
+            'address' => 'sometimes|required|string',
+            'phone_number' => 'sometimes|required|string',
+        ]);
+
+        if (isset($validated['department_code'])) {
+            $dept = Department::where('code', $validated['department_code'])->first();
+            $validated['department_id'] = $dept->id;
+            unset($validated['department_code']);
+        }
+
+        if (isset($validated['nrc_number'])) {
+            $validated['national_id'] = $validated['nrc_number'];
+            unset($validated['nrc_number']);
+        }
+
+        if (isset($validated['date_of_birth'])) {
+            $validated['dob'] = $validated['date_of_birth'];
+            unset($validated['date_of_birth']);
+        }
+
+        if (isset($validated['phone_number'])) {
+            $validated['phone'] = $validated['phone_number'];
+            unset($validated['phone_number']);
+        }
+
+        $lecturer->update($validated);
+
+        return response()->json(['message' => 'Lecturer updated successfully', 'data' => $lecturer]);
+    }
+
+    /**
+     * Delete a Lecturer.
+     */
+    public function destroy($public_id)
+    {
+        $lecturer = Lecturer::where('public_id', $public_id)->firstOrFail();
+        $lecturer->delete();
+
+        return response()->json(['message' => 'Lecturer deleted successfully']);
     }
 
     public function batchUpload(Request $request)
@@ -142,5 +198,34 @@ class LecturerController extends Controller
             'batch_id' => $batch->id
         ], 202);
 
+    }
+
+    /**
+     * Get a single Lecturer by ID.
+     */
+    public function show($public_id)
+    {
+        $lecturer = Lecturer::with('department')->where('public_id', $public_id)->firstOrFail();
+
+        return response()->json([
+            'data' => [
+                'public_id'   => $lecturer->public_id,
+                'lecturer_id' => $lecturer->lecturer_id,
+                'first_name'  => $lecturer->first_name,
+                'last_name'   => $lecturer->last_name,
+                'email'       => $lecturer->email,
+                'title'       => $lecturer->title,
+                'gender'      => $lecturer->gender,
+                'department'  => [
+                    'id'   => $lecturer->department->id,
+                    'name' => $lecturer->department->name,
+                    'code' => $lecturer->department->code,
+                ],
+                'national_id' => $lecturer->national_id,
+                'dob'         => $lecturer->dob ? $lecturer->dob->format('Y-m-d') : null,
+                'address'     => $lecturer->address,
+                'phone'       => $lecturer->phone,
+            ]
+        ]);
     }
 }

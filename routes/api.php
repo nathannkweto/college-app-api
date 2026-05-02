@@ -61,13 +61,18 @@ Route::prefix('v1')->group(function () {
                 Route::delete('programs/{public_id}/courses/{course_public_id}', 'detachCourse');
             });
 
-            // --- Students & Promotion ---
+            // --- Students ---
             Route::controller('StudentController')->group(function () {
                 Route::get('students', 'index');
                 Route::post('students', 'store');
                 Route::post('students/batch-upload', 'batchUpload');
                 Route::post('students/promotion-preview', 'promotionPreview');
                 Route::post('students/promote', 'promote');
+
+                // Single Resource Routes
+                Route::get('students/{public_id}', 'show');
+                Route::put('students/{public_id}', 'update');
+                Route::delete('students/{public_id}', 'destroy');
             });
 
             // --- Lecturers ---
@@ -75,6 +80,11 @@ Route::prefix('v1')->group(function () {
                 Route::get('lecturers', 'index');
                 Route::post('lecturers', 'store');
                 Route::post('lecturers/batch-upload', 'batchUpload');
+
+                // Single Resource Routes
+                Route::get('lecturers/{public_id}', 'show');
+                Route::put('lecturers/{public_id}', 'update');
+                Route::delete('lecturers/{public_id}', 'destroy');
             });
 
             // --- Logistics: Semesters ---

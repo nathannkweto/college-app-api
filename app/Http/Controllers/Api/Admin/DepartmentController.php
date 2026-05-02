@@ -39,4 +39,41 @@ class DepartmentController extends Controller
             ]
         ], 201);
     }
+
+    /**
+     * Update an existing department.
+     */
+    public function update(Request $request, $public_id)
+    {
+        $department = Department::where('public_id', $public_id)->firstOrFail();
+
+        $validated = $request->validate([
+            'name' => 'sometimes|required|string',
+            'code' => 'sometimes|required|string|unique:departments,code,' . $department->id,
+        ]);
+
+        $department->update($validated);
+
+        return response()->json([
+            'message' => 'Department updated successfully',
+            'data' => [
+                'public_id' => $department->public_id,
+                'name' => $department->name,
+                'code' => $department->code,
+            ]
+        ]);
+    }
+
+    /**
+     * Delete a department.
+     */
+    public function destroy($public_id)
+    {
+        $department = Department::where('public_id', $public_id)->firstOrFail();
+        $department->delete();
+
+        return response()->json([
+            'message' => 'Department deleted successfully'
+        ]);
+    }
 }

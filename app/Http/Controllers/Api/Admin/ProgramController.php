@@ -69,6 +69,49 @@ class ProgramController extends Controller
     }
 
     /**
+     * Update an existing Program.
+     */
+    public function update(Request $request, $public_id)
+    {
+        $program = Program::where('public_id', $public_id)->firstOrFail();
+
+        $request->validate([
+            'name' => 'sometimes|required|string',
+            'code' => 'sometimes|required|string|unique:programs,code,' . $program->id,
+            'total_semesters' => 'sometimes|required|integer|min:1',
+            'department_public_id' => 'sometimes|required|exists:departments,public_id',
+            'qualification_public_id' => 'sometimes|required|exists:qualifications,public_id',
+        ]);
+
+        $data = $request->only(['name', 'code', 'total_semesters']);
+
+        if ($request->has('department_public_id')) {
+            $dept = Department::where('public_id', $request->department_public_id)->first();
+            $data['department_id'] = $dept->id;
+        }
+
+        if ($request->has('qualification_public_id')) {
+            $qual = Qualification::where('public_id', $request->qualification_public_id)->first();
+            $data['qualification_id'] = $qual->id;
+        }
+
+        $program->update($data);
+
+        return response()->json(['message' => 'Program updated successfully', 'data' => $program]);
+    }
+
+    /**
+     * Delete a Program.
+     */
+    public function destroy($public_id)
+    {
+        $program = Program::where('public_id', $public_id)->firstOrFail();
+        $program->delete();
+
+        return response()->json(['message' => 'Program deleted successfully']);
+    }
+
+    /**
      * Get the curriculum (attached courses) for a program.
      */
     public function getCourses($public_id)
