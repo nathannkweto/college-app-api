@@ -7,54 +7,38 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
 use App\Jobs\ProcessStudentMark;
 use App\Models\Student;
-use App\Models\Semester; // Imported the Semester model
+use App\Models\Semester;
 
 class GradeController extends Controller
 {
     public function submitBatch(Request $request)
     {
-        // 1. Validate using the NEW field names (Public API Contract)
+        // 1. Validate the incoming payload
         $validated = $request->validate([
             'program_course_id' => 'required|integer|exists:program_courses,id',
-            'semester'          => 'required|string',
+            // We no longer require the frontend to dictate the semester!
+            // You can leave this here as 'nullable' so the Flutter app doesn't break when it sends it.
+            'semester'          => 'nullable|string', 
             'submissions'       => 'required|array',
-
-            // Validate UUID exists in the public_id column
             'submissions.*.student_public_id' => 'required|exists:students,public_id',
-            // Validate score (mapped from 'total_score')
             'submissions.*.total_score'       => 'required|numeric|min:0|max:100',
         ]);
 
-        // 2. Resolve the Semester String to an Internal Integer ID
-        // Expected incoming string format: "2024-2025 Semester 1"
-        $semesterParts = explode(' Semester ', $validated['semester']);
+        // 2. Get the Active Semester directly from the database
+        // This uses the active() helper defined in your Semester model
+        $semesterRecord = Semester::active();
         
-        if (count($semesterParts) !== 2) {
-            return response()->json([
-                'message' => 'Invalid semester format. Expected format: "YYYY-YYYY Semester N"'
-            ], 422);
-        }
-
-        $academicYear = trim($semesterParts[0]); // "2024-2025"
-        $semesterNumber = trim($semesterParts[1]); // "1"
-
-        // Lookup the exact Semester record in the database
-        $semesterRecord = Semester::where('academic_year', $academicYear)
-            ->where('semester_number', $semesterNumber)
-            ->first();
-
         if (!$semesterRecord) {
             return response()->json([
-                'message' => 'Semester not found in database for: ' . $validated['semester']
+                'message' => 'No active semester currently found in the system.'
             ], 422);
         }
 
-        $internalSemesterId = $semesterRecord->id;
+        $internalSemesterId = $semesterRecord->id; // ✅ We have our integer!
 
         // 3. Resolve Student UUIDs to Internal IDs
         $publicIds = array_column($validated['submissions'], 'student_public_id');
 
-        // Map: 'uuid-string' => 101 (integer)
         $studentMap = Student::whereIn('public_id', $publicIds)
             ->pluck('id', 'public_id');
 
@@ -62,14 +46,13 @@ class GradeController extends Controller
         foreach ($validated['submissions'] as $submission) {
             $publicId = $submission['student_public_id'];
 
-            // Only process if we found the internal ID
             if (isset($studentMap[$publicId])) {
                 $internalStudentId = $studentMap[$publicId];
 
                 $jobs[] = new ProcessStudentMark(
                     $internalStudentId,              
                     $validated['program_course_id'], 
-                    $internalSemesterId,             // ✅ Passing the INTEGER ID here!
+                    $internalSemesterId,             // ✅ Passing the active integer ID
                     $submission['total_score']       
                 );
             }
