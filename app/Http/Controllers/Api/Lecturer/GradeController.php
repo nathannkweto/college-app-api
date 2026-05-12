@@ -6,7 +6,8 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
 use App\Jobs\ProcessStudentMark;
-use App\Models\Student; // Ensure this is imported
+use App\Models\Student;
+use App\Models\Semester; // Imported the Semester model
 
 class GradeController extends Controller
 {
@@ -24,8 +25,33 @@ class GradeController extends Controller
             'submissions.*.total_score'       => 'required|numeric|min:0|max:100',
         ]);
 
-        // 2. Resolve Student UUIDs to Internal IDs
-        // We need to fetch the internal integer IDs to pass to ProcessStudentMark
+        // 2. Resolve the Semester String to an Internal Integer ID
+        // Expected incoming string format: "2024-2025 Semester 1"
+        $semesterParts = explode(' Semester ', $validated['semester']);
+        
+        if (count($semesterParts) !== 2) {
+            return response()->json([
+                'message' => 'Invalid semester format. Expected format: "YYYY-YYYY Semester N"'
+            ], 422);
+        }
+
+        $academicYear = trim($semesterParts[0]); // "2024-2025"
+        $semesterNumber = trim($semesterParts[1]); // "1"
+
+        // Lookup the exact Semester record in the database
+        $semesterRecord = Semester::where('academic_year', $academicYear)
+            ->where('semester_number', $semesterNumber)
+            ->first();
+
+        if (!$semesterRecord) {
+            return response()->json([
+                'message' => 'Semester not found in database for: ' . $validated['semester']
+            ], 422);
+        }
+
+        $internalSemesterId = $semesterRecord->id;
+
+        // 3. Resolve Student UUIDs to Internal IDs
         $publicIds = array_column($validated['submissions'], 'student_public_id');
 
         // Map: 'uuid-string' => 101 (integer)
@@ -41,10 +67,10 @@ class GradeController extends Controller
                 $internalStudentId = $studentMap[$publicId];
 
                 $jobs[] = new ProcessStudentMark(
-                    $internalStudentId,              // Internal ID (Converted)
-                    $validated['program_course_id'], // Internal ID (Passed directly)
-                    $validated['semester'],
-                    $submission['total_score']       // Score (Renamed from mark)
+                    $internalStudentId,              
+                    $validated['program_course_id'], 
+                    $internalSemesterId,             // ✅ Passing the INTEGER ID here!
+                    $submission['total_score']       
                 );
             }
         }
@@ -53,7 +79,7 @@ class GradeController extends Controller
             return response()->json(['message' => 'No valid student records found.'], 422);
         }
 
-        // 3. Dispatch Batch
+        // 4. Dispatch Batch
         try {
             $batch = Bus::batch($jobs)
                 ->name('Grading Batch: ' . $validated['program_course_id'])
