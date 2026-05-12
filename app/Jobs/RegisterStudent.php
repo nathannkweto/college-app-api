@@ -36,13 +36,10 @@ class RegisterStudent implements ShouldQueue
             ->orWhere('national_id', $this->data['nrc_number'])
             ->exists();
 
-        if ($exists) {
-            return;
-        }
+        if ($exists) return;
 
-        // 2. Fetch Program OUTSIDE transaction
+        // 2. Fetch Program
         $program = Program::where('code', $this->data['program_code'])->first();
-
         if (!$program) {
             $this->fail(new \Exception("Program {$this->data['program_code']} not found"));
             return;
@@ -51,39 +48,42 @@ class RegisterStudent implements ShouldQueue
         $user = null;
         $studentId = null;
 
-        DB::transaction(function () use ($program, &$user, &$studentId) {
+        // THE FIX: Use Laravel's Cache Lock instead of Postgres-specific SQL
+        // This ensures only one job processes registration for this program at a time.
+        $lockKey = "student_registration_lock_" . $program->id;
+        
+        DB::transaction(function () use ($program, $lockKey, &$user, &$studentId) {
+            
+            // Acquire a lock for 10 seconds. 
+            // If another job has it, this will wait or fail depending on your configuration.
+            // For a background job, we can use block() to wait for the lock to become free.
+            \Illuminate\Support\Facades\Cache::lock($lockKey, 10)->block(5, function () use ($program, &$user, &$studentId) {
+                
+                // 4. Generate ID
+                $academicYear = date('Y', strtotime($this->data['enrollment_date']));
+                $code = $program->code ?? 'STU';
 
-            // 3. THE FIX: Use selectOne instead of statement.
-            // DB::statement causes issues with SELECT queries (even locks) because it ignores results.
-            // selectOne ensures the query is fully executed and the connection is clean.
-            $lockKey = "student_registration_lock_" . $program->id;
-            DB::selectOne("SELECT pg_advisory_xact_lock(hashtext(?))", [$lockKey]);
-
-            // 4. Generate ID
-            $academicYear = date('Y', strtotime($this->data['enrollment_date']));
-            $code = $program->code ?? 'STU';
-
-            $sequence = Student::where('program_id', $program->id)->count() + 1;
-            $studentId = sprintf("%s-%s-%03d", $academicYear, $code, $sequence);
-
-            while(Student::where('student_id', $studentId)->exists()) {
-                $sequence++;
+                // Use lockForUpdate() on the count query to prevent race conditions within the transaction
+                $sequence = Student::where('program_id', $program->id)->lockForUpdate()->count() + 1;
                 $studentId = sprintf("%s-%s-%03d", $academicYear, $code, $sequence);
-            }
 
-            // 5. Create User
-            $user = User::firstOrCreate(
-                ['email' => $this->data['email']],
-                [
-                    'name' => $this->data['first_name'] . ' ' . $this->data['last_name'],
-                    'password' => Hash::make($studentId),
-                    'role' => 'STUDENT',
-                ]
-            );
+                while(Student::where('student_id', $studentId)->exists()) {
+                    $sequence++;
+                    $studentId = sprintf("%s-%s-%03d", $academicYear, $code, $sequence);
+                }
 
-            // 6. Create Student
-            Student::create(
-                [
+                // 5. Create User
+                $user = User::firstOrCreate(
+                    ['email' => $this->data['email']],
+                    [
+                        'name' => $this->data['first_name'] . ' ' . $this->data['last_name'],
+                        'password' => Hash::make($studentId),
+                        'role' => 'STUDENT',
+                    ]
+                );
+
+                // 6. Create Student
+                Student::create([
                     'email' => $this->data['email'],
                     'user_id' => $user->id,
                     'public_id' => (string) Str::uuid(),
@@ -99,8 +99,8 @@ class RegisterStudent implements ShouldQueue
                     'current_semester_sequence' => $this->data['semester'] ?? 1,
                     'enrollment_date' => $this->data['enrollment_date'],
                     'status' => 'active',
-                ]
-            );
+                ]);
+            });
         });
 
         if ($user && $studentId) {

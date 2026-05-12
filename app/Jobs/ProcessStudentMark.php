@@ -34,18 +34,22 @@ class ProcessStudentMark implements ShouldQueue
             return;
         }
 
-        $grade = GradingService::calculateGrade((float) $this->mark);
+        // Wrap in a transaction for data integrity
+        \Illuminate\Support\Facades\DB::transaction(function () {
+            
+            $grade = GradingService::calculateGrade((float) $this->mark);
 
-        Enrollment::updateOrCreate(
-            [
-                'student_id' => (int) $this->studentId,
-                'program_course_id' => (int) $this->programCourseId,
-            ],
-            [
-                'semester' => (string) $this->semester,
-                'score' => (float) $this->mark,
-                'grade' => $grade,
-            ]
-        );
+            Enrollment::updateOrCreate(
+                [
+                    'student_id' => (int) $this->studentId,
+                    'program_course_id' => (int) $this->programCourseId,
+                ],
+                [
+                    'semester' => (string) $this->semester,
+                    'score' => (float) $this->mark,
+                    'grade' => $grade,
+                ]
+            );
+        });
     }
 }

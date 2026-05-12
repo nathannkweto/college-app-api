@@ -35,9 +35,7 @@ class RegisterLecturer implements ShouldQueue
             ->orWhere('national_id', $this->data['nrc_number'])
             ->exists();
 
-        if ($exists) {
-            return;
-        }
+        if ($exists) return;
 
         $department = Department::where('code', $this->data['department_code'])->first();
 
@@ -49,34 +47,39 @@ class RegisterLecturer implements ShouldQueue
         $user = null;
         $lecturerId = null;
 
-        DB::transaction(function () use ($department, &$user, &$lecturerId) {
+        // Use a generic lock that works across any database type
+        $lockKey = "lecturer_registration_lock_" . $department->id;
 
-            // FIX: Use selectOne to cleanly execute the lock
-            $lockKey = "lecturer_registration_lock_" . $department->id;
-            DB::selectOne("SELECT pg_advisory_xact_lock(hashtext(?))", [$lockKey]);
+        DB::transaction(function () use ($department, $lockKey, &$user, &$lecturerId) {
+            
+            // Wait up to 5 seconds to get the lock, then hold it for 10 seconds
+            \Illuminate\Support\Facades\Cache::lock($lockKey, 10)->block(5, function () use ($department, &$user, &$lecturerId) {
 
-            $prefix = "LEC";
-            $deptCode = $department->code ?? 'GEN';
+                $prefix = "LEC";
+                $deptCode = $department->code ?? 'GEN';
 
-            $sequence = Lecturer::where('department_id', $department->id)->count() + 1;
-            $lecturerId = sprintf("%s-%s-%03d", $prefix, $deptCode, $sequence);
-
-            while(Lecturer::where('lecturer_id', $lecturerId)->exists()) {
-                $sequence++;
+                // Use lockForUpdate to prevent other requests from reading the same count
+                $sequence = Lecturer::where('department_id', $department->id)
+                    ->lockForUpdate()
+                    ->count() + 1;
+                
                 $lecturerId = sprintf("%s-%s-%03d", $prefix, $deptCode, $sequence);
-            }
 
-            $user = User::firstOrCreate(
-                ['email' => $this->data['email']],
-                [
-                    'name' => $this->data['first_name'] . ' ' . $this->data['last_name'],
-                    'password' => Hash::make($lecturerId),
-                    'role' => 'LECTURER',
-                ]
-            );
+                while(Lecturer::where('lecturer_id', $lecturerId)->exists()) {
+                    $sequence++;
+                    $lecturerId = sprintf("%s-%s-%03d", $prefix, $deptCode, $sequence);
+                }
 
-            Lecturer::create(
-                [
+                $user = User::firstOrCreate(
+                    ['email' => $this->data['email']],
+                    [
+                        'name' => $this->data['first_name'] . ' ' . $this->data['last_name'],
+                        'password' => Hash::make($lecturerId),
+                        'role' => 'LECTURER',
+                    ]
+                );
+
+                Lecturer::create([
                     'email' => $this->data['email'],
                     'user_id' => $user->id,
                     'public_id' => (string) Str::uuid(),
@@ -90,8 +93,8 @@ class RegisterLecturer implements ShouldQueue
                     'address' => $this->data['address'],
                     'phone' => $this->data['phone_number'],
                     'title' => $this->data['title'],
-                ]
-            );
+                ]);
+            });
         });
 
         if ($user && $lecturerId) {

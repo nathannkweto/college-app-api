@@ -38,6 +38,8 @@ class EnrollStudentForSemester implements ShouldQueue
         // 1. Calculate Logic
         $result = $progressionService->determineNextStep($student, $this->isStartOfYear);
 
+        if (empty($result['program_course_ids'])) return;
+        
         DB::transaction(function () use ($student, $result) {
 
             // 2. Update Student Sequence
