@@ -45,7 +45,7 @@ class ProcessStudentMark implements ShouldQueue
                     'program_course_id' => (int) $this->programCourseId,
                 ],
                 [
-                    'semester' => (string) $this->semester,
+                    'semester_id' => (string) $this->semester,
                     'score' => (float) $this->mark,
                     'grade' => $grade,
                 ]
