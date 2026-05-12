@@ -111,7 +111,7 @@ return [
     */
 
     'batching' => [
-        'database' => 'pgsql_batches',
+        'database' => 'mysql',
         'table' => 'job_batches',
     ],
 
