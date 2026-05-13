@@ -15,6 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role' => \App\Http\Middleware\CheckRole::class,
         ]);
+        $middleware->redirectGuestsTo(fn () => null);
         $middleware->prepend(\Illuminate\Http\Middleware\HandleCors::class);
         $middleware->validateCsrfTokens(except: [
             '/_google-cloud-tasks/*'
