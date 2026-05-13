@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Lecturer;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Log;
 use App\Jobs\ProcessStudentMark;
 use App\Models\Student;
 use App\Models\Semester;
@@ -74,7 +75,7 @@ class GradeController extends Controller
                 'batch_id' => $batch->id
             ], 202);
         } catch (\Throwable $e) {
-            \Log::error('Grade batch dispatch failed', [
+            Log::error('Grade batch dispatch failed', [
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
                 'program_course_id' => $validated['program_course_id'],
