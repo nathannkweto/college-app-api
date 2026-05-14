@@ -83,6 +83,7 @@ class CourseController extends Controller
     $activeSemester = Semester::where('is_active', true)->first();
     if (!$activeSemester) abort(404, 'No active semester');
 
+    // 1. Find the specific assignment
     $assignment = ProgramCourse::query()
         ->where('lecturer_id', $lecturer->id)
         ->whereHas('course', function($q) use ($coursePublicId) {
@@ -91,25 +92,14 @@ class CourseController extends Controller
         ->with(['course', 'program'])
         ->firstOrFail();
 
-    // --- UPDATED STUDENT QUERY ---
+    // 2. Fetch Students based on ENROLLMENT (The Source of Truth)
     $students = Student::query()
-        ->where('program_id', $assignment->program_id)
-        ->where('current_semester_sequence', $assignment->semester_sequence)
-        ->where(function($query) use ($assignment) {
-            // 1. Include students who HAVE an enrollment record that is 'Pending'
-            $query->whereHas('enrollments', function($q) use ($assignment) {
-                $q->where('program_course_id', $assignment->id)
-                  ->where(function($sq) {
-                      $sq->where('grade', 'Pending')
-                        ->orWhereNull('grade'); // Covers case where grade might be null
-                  });
-            })
-            // 2. OR include students who don't even have an enrollment record yet
-            ->orWhereDoesntHave('enrollments', function($q) use ($assignment) {
-                $q->where('program_course_id', $assignment->id);
-            });
+        ->whereHas('enrollments', function($q) use ($assignment) {
+            // We only care if they have a record for THIS specific class assignment
+            $q->where('program_course_id', $assignment->id);
         })
         ->with(['enrollments' => function($q) use ($assignment) {
+            // Eager load the specific enrollment so we can see the grade/status
             $q->where('program_course_id', $assignment->id);
         }])
         ->orderBy('last_name')
@@ -140,7 +130,9 @@ class CourseController extends Controller
                 'last_name' => $student->last_name,
                 'email' => $student->email,
                 'avatar' => $student->avatar_url,
-                'current_grade' => $enrollment ? $enrollment->grade : null,
+                
+                // Now shows the actual grade, or 'Pending' if not yet graded
+                'current_grade' => $enrollment ? $enrollment->grade : 'N/A',
                 'current_status' => $enrollment ? $enrollment->grade : 'NOT ENROLLED',
             ];
         })
