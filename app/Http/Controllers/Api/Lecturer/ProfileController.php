@@ -10,8 +10,7 @@ class ProfileController extends Controller
 {
     public function show(Request $request)
     {
-        $user = Auth::user();
-        $lecturer = $user->profile()->with('department')->first();
+        $lecturer = Auth::user()->profile()->with('department')->first();
 
         if (!$lecturer) {
             return response()->json(['message' => 'Lecturer profile not found.'], 404);
@@ -19,13 +18,16 @@ class ProfileController extends Controller
 
         return response()->json([
             'data' => [
+                'public_id' => $lecturer->public_id,
+                'lecturer_id' => $lecturer->id, // business ID, e.g. "LEC-IT-001"
                 'first_name' => $lecturer->first_name,
                 'last_name' => $lecturer->last_name,
                 'title' => $lecturer->title,
-                'department' => $lecturer->department->name ?? 'N/A',
-                'lecturer_id' => $lecturer->lecturer_id,
-                'avatar_url' => null,
-            ]
+                'email' => $lecturer->email,
+                'phone' => $lecturer->phone,
+                'department' => $lecturer->department?->name,
+                'employment_date' => $lecturer->employment_date?->format('Y-m-d'),
+            ],
         ]);
     }
 }

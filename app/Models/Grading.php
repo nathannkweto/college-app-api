@@ -12,6 +12,10 @@ class Grading extends Model
 
     protected $primaryKey = 'db_id';
 
+    public $incrementing = true;
+
+    protected $keyType = 'int';
+
     protected $fillable = [
         'public_id',
         'name',
@@ -32,6 +36,13 @@ class Grading extends Model
     public function getRouteKeyName()
     {
         return 'public_id';
+    }
+
+    public static function forScore(float $score): ?self
+    {
+        return self::where('lower_mark', '<=', $score)
+            ->where('upper_mark', '>=', $score)
+            ->first();
     }
 
     protected static function booted()

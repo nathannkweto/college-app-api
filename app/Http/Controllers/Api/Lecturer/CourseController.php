@@ -3,139 +3,126 @@
 namespace App\Http\Controllers\Api\Lecturer;
 
 use App\Http\Controllers\Controller;
-use App\Models\ProgramCourse;
+use App\Models\Course;
+use App\Models\Result;
 use App\Models\Semester;
 use App\Models\Student;
+use App\Models\TimetableEntry;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class CourseController extends Controller
 {
     /**
-     * List all courses assigned to the logged-in lecturer
-     * for the CURRENT semester (based on parity).
+     * List courses assigned to the logged-in lecturer for the active semester,
+     * derived from their timetable entries (no program_courses table exists).
      */
     public function index(Request $request)
     {
-        $user = Auth::user();
-        $lecturer = $user->profile()->with('department')->first();
+        $lecturer = Auth::user()->profile;
 
         if (!$lecturer) {
             return response()->json(['message' => 'Lecturer profile not found.'], 404);
         }
 
-        // 1. Get the Active Semester
-        $activeSemester = Semester::where('is_active', true)->first();
+        $activeSemester = Semester::getActive();
 
         if (!$activeSemester) {
-            return response()->json(['message' => 'No active semester found'], 404);
+            return response()->json(['message' => 'No active semester found.'], 404);
         }
 
-        // 2. Determine Active Sequences (Odd vs Even)
-        $isOddSemester = ($activeSemester->semester_number % 2) !== 0;
+        $entries = TimetableEntry::with(['course', 'program'])
+            ->where('semester_db_id', $activeSemester->db_id)
+            ->where('lecturer_db_id', $lecturer->db_id)
+            ->get()
+            ->unique(function ($entry) {
+                return $entry->course_db_id . '-' . $entry->program_db_id;
+            });
 
-        // 3. Fetch Assignments
-        $assignedCourses = ProgramCourse::query()
-            ->with([
-                'course',
-                'program.department',
-                'program.qualification'
-            ])
-            ->where('lecturer_id', $lecturer->id)
-            ->whereRaw('semester_sequence % 2 = ?', [$isOddSemester ? 1 : 0])
-            ->get();
-
-        // 4. Transform for API
-        $data = $assignedCourses->map(function ($assignment) {
-            return [
-                'public_id' => $assignment->course->public_id,
-                'course_name' => $assignment->course->name,
-                'course_code' => $assignment->course->code,
-                'program_name' => $assignment->program->name,
-                'program_code' => $assignment->program->code,
-                'semester_sequence' => $assignment->semester_sequence,
-                'program_public_id' => $assignment->program->public_id,
-            ];
-        });
+        $data = $entries->map(fn (TimetableEntry $entry) => [
+            'public_id' => $entry->course?->public_id,
+            'course_name' => $entry->course?->name,
+            'course_code' => $entry->course?->code,
+            'program_public_id' => $entry->program?->public_id,
+            'program_name' => $entry->program?->name,
+        ])->values();
 
         return response()->json([
             'meta' => [
-                'semester' => $activeSemester->name,
-                'type' => $isOddSemester ? 'Odd (1, 3, 5...)' : 'Even (2, 4, 6...)'
+                'semester_number' => $activeSemester->semester_number,
+                'academic_year' => $activeSemester->academicYear?->name,
             ],
-            'data' => $data
+            'data' => $data,
         ]);
     }
 
     /**
-     * Get details of a specific course assignment,
-     * including the list of Students currently in that class.
+     * Course detail + roster.
+     *
+     * NOTE: there is no enrollment/registration table in this schema, so
+     * "students in this class" is approximated as all students whose
+     * program matches the timetable entry's program. This can overshoot
+     * (includes students who haven't actually taken the course) until a
+     * real enrollment table exists.
      */
-    public function show(Request $request, string $coursePublicId)
-{
-    $user = Auth::user();
-    $lecturer = $user->profile()->with('department')->first();
+    public function show(Request $request, string $publicId)
+    {
+        $lecturer = Auth::user()->profile;
 
-    if (!$lecturer) {
-        return response()->json(['message' => 'Lecturer profile not found.'], 404);
+        if (!$lecturer) {
+            return response()->json(['message' => 'Lecturer profile not found.'], 404);
+        }
+
+        $activeSemester = Semester::getActive();
+        if (!$activeSemester) {
+            abort(404, 'No active semester found.');
+        }
+
+        $course = Course::where('public_id', $publicId)->firstOrFail();
+
+        $entry = TimetableEntry::with('program')
+            ->where('lecturer_db_id', $lecturer->db_id)
+            ->where('course_db_id', $course->db_id)
+            ->where('semester_db_id', $activeSemester->db_id)
+            ->firstOrFail();
+
+        $students = $entry->program
+            ? Student::where('program_db_id', $entry->program->db_id)->orderBy('last_name')->get()
+            : collect();
+
+        $results = Result::where('course_db_id', $course->db_id)
+            ->where('semester_db_id', $activeSemester->db_id)
+            ->whereIn('student_db_id', $students->pluck('db_id'))
+            ->get()
+            ->keyBy('student_db_id');
+
+        return response()->json([
+            'course' => [
+                'public_id' => $course->public_id,
+                'name' => $course->name,
+                'code' => $course->code,
+            ],
+            'program' => $entry->program ? [
+                'public_id' => $entry->program->public_id,
+                'name' => $entry->program->name,
+            ] : null,
+            'context' => [
+                'semester_number' => $activeSemester->semester_number,
+                'student_count' => $students->count(),
+            ],
+            'students' => $students->map(function (Student $student) use ($results) {
+                $result = $results->get($student->db_id);
+
+                return [
+                    'public_id' => $student->public_id,
+                    'student_id' => $student->id, // business ID, e.g. "2025-BA-001"
+                    'first_name' => $student->first_name,
+                    'last_name' => $student->last_name,
+                    'email' => $student->email,
+                    'current_score' => $result?->score,
+                    'current_grade' => $result?->grade ?? 'Pending',
+                ];
+            })->values(),
+        ]);
     }
-
-    $activeSemester = Semester::where('is_active', true)->first();
-    if (!$activeSemester) abort(404, 'No active semester');
-
-    // 1. Find the specific assignment
-    $assignment = ProgramCourse::query()
-        ->where('lecturer_id', $lecturer->id)
-        ->whereHas('course', function($q) use ($coursePublicId) {
-            $q->where('public_id', $coursePublicId);
-        })
-        ->with(['course', 'program'])
-        ->firstOrFail();
-
-    // 2. Fetch Students based on ENROLLMENT (The Source of Truth)
-    $students = Student::query()
-        ->whereHas('enrollments', function($q) use ($assignment) {
-            // We only care if they have a record for THIS specific class assignment
-            $q->where('program_course_id', $assignment->id);
-        })
-        ->with(['enrollments' => function($q) use ($assignment) {
-            // Eager load the specific enrollment so we can see the grade/status
-            $q->where('program_course_id', $assignment->id);
-        }])
-        ->orderBy('last_name')
-        ->get();
-
-    return response()->json([
-        'program_course_id' => $assignment->id,
-        'course' => [
-            'name' => $assignment->course->name,
-            'code' => $assignment->course->code,
-        ],
-        'program' => [
-            'name' => $assignment->program->name,
-            'code' => $assignment->program->code,
-        ],
-        'context' => [
-            'semester' => $activeSemester->name,
-            'semester_sequence' => $assignment->semester_sequence,
-            'student_count' => $students->count(),
-        ],
-        'students' => $students->map(function($student) {
-            $enrollment = $student->enrollments->first();
-
-            return [
-                'public_id' => $student->public_id,
-                'student_id' => $student->student_id,
-                'first_name' => $student->first_name,
-                'last_name' => $student->last_name,
-                'email' => $student->email,
-                'avatar' => $student->avatar_url,
-                
-                // Now shows the actual grade, or 'Pending' if not yet graded
-                'current_grade' => $enrollment ? $enrollment->grade : 'N/A',
-                'current_status' => $enrollment ? $enrollment->grade : 'NOT ENROLLED',
-            ];
-        })
-    ]);
-}
 }

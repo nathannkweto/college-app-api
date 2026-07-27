@@ -3,58 +3,70 @@
 namespace App\Http\Controllers\Api\Lecturer;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\ProcessStudentMark;
+use App\Models\Course;
+use App\Models\Semester;
+use App\Models\Student;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Log;
-use App\Jobs\ProcessStudentMark;
-use App\Models\Student;
-use App\Models\Semester;
 
 class GradeController extends Controller
 {
-    public function submitBatch(Request $request)
+    /**
+     * POST /api/v1/lecturer/courses/{course_public_id}/grades
+     */
+    public function submitBatch(Request $request, string $course_public_id)
     {
-        // 1. Validate the incoming payload
+        $lecturer = Auth::user()->profile;
+
+        if (!$lecturer) {
+            return response()->json(['message' => 'Lecturer profile not found.'], 404);
+        }
+
+        $course = Course::where('public_id', $course_public_id)->firstOrFail();
+
         $validated = $request->validate([
-            'program_course_id' => 'required|integer|exists:program_courses,id',
-            // We no longer require the frontend to dictate the semester!
-            // You can leave this here as 'nullable' so the Flutter app doesn't break when it sends it.
-            'semester'          => 'nullable|string', 
-            'submissions'       => 'required|array',
+            'submissions' => 'required|array|min:1',
             'submissions.*.student_public_id' => 'required|exists:students,public_id',
-            'submissions.*.total_score'       => 'required|numeric|min:0|max:100',
+            'submissions.*.total_score' => 'required|numeric|min:0|max:100',
         ]);
 
-        // 2. Get the Active Semester directly from the database
-        // This uses the active() helper defined in your Semester model
-        $semesterRecord = Semester::active();
-        
-        if (!$semesterRecord) {
+        $activeSemester = Semester::getActive();
+
+        if (!$activeSemester) {
             return response()->json([
-                'message' => 'No active semester currently found in the system.'
+                'message' => 'No active semester currently found in the system.',
             ], 422);
         }
 
-        $internalSemesterId = $semesterRecord->id; // ✅ We have our integer!
+        // Confirm this lecturer is actually assigned to this course this semester,
+        // rather than trusting the route alone.
+        $isAssigned = $lecturer->timetableEntries()
+            ->where('course_db_id', $course->db_id)
+            ->where('semester_db_id', $activeSemester->db_id)
+            ->exists();
 
-        // 3. Resolve Student UUIDs to Internal IDs
+        if (!$isAssigned) {
+            return response()->json([
+                'message' => 'You are not assigned to this course for the active semester.',
+            ], 403);
+        }
+
         $publicIds = array_column($validated['submissions'], 'student_public_id');
-
-        $studentMap = Student::whereIn('public_id', $publicIds)
-            ->pluck('id', 'public_id');
+        $studentDbIdMap = Student::whereIn('public_id', $publicIds)->pluck('db_id', 'public_id');
 
         $jobs = [];
         foreach ($validated['submissions'] as $submission) {
-            $publicId = $submission['student_public_id'];
+            $studentDbId = $studentDbIdMap[$submission['student_public_id']] ?? null;
 
-            if (isset($studentMap[$publicId])) {
-                $internalStudentId = $studentMap[$publicId];
-
+            if ($studentDbId) {
                 $jobs[] = new ProcessStudentMark(
-                    $internalStudentId,              
-                    $validated['program_course_id'], 
-                    $internalSemesterId,             // ✅ Passing the active integer ID
-                    $submission['total_score']       
+                    $studentDbId,
+                    $course->db_id,
+                    $activeSemester->db_id,
+                    $submission['total_score']
                 );
             }
         }
@@ -63,22 +75,20 @@ class GradeController extends Controller
             return response()->json(['message' => 'No valid student records found.'], 422);
         }
 
-        // 4. Dispatch Batch
         try {
             $batch = Bus::batch($jobs)
-                ->name('Grading Batch: ' . $validated['program_course_id'])
+                ->name('Grading Batch: ' . $course->public_id)
                 ->allowFailures()
                 ->dispatch();
 
             return response()->json([
                 'message' => 'Grades are being processed.',
-                'batch_id' => $batch->id
+                'batch_id' => $batch->id,
             ], 202);
         } catch (\Throwable $e) {
             Log::error('Grade batch dispatch failed', [
                 'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'program_course_id' => $validated['program_course_id'],
+                'course_public_id' => $course_public_id,
                 'jobs_count' => count($jobs),
             ]);
 
