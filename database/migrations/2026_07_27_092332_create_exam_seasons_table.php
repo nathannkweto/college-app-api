@@ -1,0 +1,27 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('exam_seasons', function (Blueprint $table) {
+            $table->id('db_id');
+            $table->uuid('public_id')->unique();
+            $table->string('name');
+            $table->foreignId('semester_db_id')
+                ->constrained('semesters', 'db_id')
+                ->cascadeOnDelete();
+            $table->boolean('is_active')->default(false);
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('exam_seasons');
+    }
+};

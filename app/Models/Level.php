@@ -6,7 +6,7 @@ use App\Traits\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
-class Admin extends Model
+class Level extends Model
 {
     use HasPublicId;
 
@@ -14,11 +14,8 @@ class Admin extends Model
 
     protected $fillable = [
         'public_id',
-        'first_name',
-        'last_name',
-        'phone',
-        'id',               // e.g. ADM001, DEV-1
-        'user_db_id',
+        'name',
+        'tag',
     ];
 
     protected $hidden = [
@@ -32,15 +29,20 @@ class Admin extends Model
 
     protected static function booted()
     {
-        static::creating(function (Admin $admin) {
-            if (empty($admin->public_id)) {
-                $admin->public_id = (string) Str::uuid();
+        static::creating(function (Level $level) {
+            if (empty($level->public_id)) {
+                $level->public_id = (string) Str::uuid();
             }
         });
     }
 
-    public function user()
+    public function programs()
     {
-        return $this->belongsTo(User::class, 'user_db_id', 'db_id');
+        return $this->hasMany(Program::class, 'level_db_id', 'db_id');
+    }
+
+    public function students()
+    {
+        return $this->hasMany(Student::class, 'level_db_id', 'db_id');
     }
 }

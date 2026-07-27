@@ -6,7 +6,7 @@ use App\Traits\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
-class ExamSeason extends Model
+class Result extends Model
 {
     use HasPublicId;
 
@@ -14,13 +14,17 @@ class ExamSeason extends Model
 
     protected $fillable = [
         'public_id',
-        'name',
         'semester_db_id',
-        'is_active',
+        'student_db_id',
+        'course_db_id',
+        'score',
+        'grade',
+        'pass_mark',
     ];
 
     protected $casts = [
-        'is_active' => 'boolean',
+        'score'     => 'decimal:2',
+        'pass_mark' => 'decimal:2',
     ];
 
     protected $hidden = [
@@ -34,9 +38,9 @@ class ExamSeason extends Model
 
     protected static function booted()
     {
-        static::creating(function (ExamSeason $season) {
-            if (empty($season->public_id)) {
-                $season->public_id = (string) Str::uuid();
+        static::creating(function (Result $result) {
+            if (empty($result->public_id)) {
+                $result->public_id = (string) Str::uuid();
             }
         });
     }
@@ -46,13 +50,13 @@ class ExamSeason extends Model
         return $this->belongsTo(Semester::class, 'semester_db_id', 'db_id');
     }
 
-    public function examPapers()
+    public function student()
     {
-        return $this->hasMany(ExamPaper::class, 'exam_season_db_id', 'db_id');
+        return $this->belongsTo(Student::class, 'student_db_id', 'db_id');
     }
 
-    public static function active()
+    public function course()
     {
-        return static::where('is_active', true)->first();
+        return $this->belongsTo(Course::class, 'course_db_id', 'db_id');
     }
 }

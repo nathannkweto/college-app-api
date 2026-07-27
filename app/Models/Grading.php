@@ -6,7 +6,7 @@ use App\Traits\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
-class Admin extends Model
+class Grading extends Model
 {
     use HasPublicId;
 
@@ -14,11 +14,15 @@ class Admin extends Model
 
     protected $fillable = [
         'public_id',
-        'first_name',
-        'last_name',
-        'phone',
-        'id',               // e.g. ADM001, DEV-1
-        'user_db_id',
+        'name',
+        'upper_mark',
+        'lower_mark',
+        'mention',
+    ];
+
+    protected $casts = [
+        'upper_mark' => 'decimal:2',
+        'lower_mark' => 'decimal:2',
     ];
 
     protected $hidden = [
@@ -32,15 +36,10 @@ class Admin extends Model
 
     protected static function booted()
     {
-        static::creating(function (Admin $admin) {
-            if (empty($admin->public_id)) {
-                $admin->public_id = (string) Str::uuid();
+        static::creating(function (Grading $grading) {
+            if (empty($grading->public_id)) {
+                $grading->public_id = (string) Str::uuid();
             }
         });
-    }
-
-    public function user()
-    {
-        return $this->belongsTo(User::class, 'user_db_id', 'db_id');
     }
 }

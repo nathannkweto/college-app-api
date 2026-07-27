@@ -4,26 +4,51 @@ namespace App\Models;
 
 use App\Traits\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Support\Str;
 
 class Course extends Model
 {
     use HasPublicId;
 
-    protected $guarded = ['id'];
-    protected $fillable = ['name', 'code', 'department_id'];
+    protected $primaryKey = 'db_id';
 
-    public function department(): BelongsTo
+    protected $fillable = [
+        'public_id',
+        'name',
+        'department_db_id',
+        'code',
+    ];
+
+    protected $hidden = [
+        'db_id',
+    ];
+
+    public function getRouteKeyName()
     {
-        return $this->belongsTo(Department::class);
+        return 'public_id';
     }
 
-    public function programs(): BelongsToMany
+    protected static function booted()
     {
-        return $this->belongsToMany(Program::class, 'program_course')
-            ->using(ProgramCourse::class) // <--- ADD THIS LINE
-            ->withPivot('semester_sequence')
-            ->orderByPivot('semester_sequence');
+        static::creating(function (Course $course) {
+            if (empty($course->public_id)) {
+                $course->public_id = (string) Str::uuid();
+            }
+        });
+    }
+
+    public function department()
+    {
+        return $this->belongsTo(Department::class, 'department_db_id', 'db_id');
+    }
+
+    public function results()
+    {
+        return $this->hasMany(Result::class, 'course_db_id', 'db_id');
+    }
+
+    public function timetableEntries()
+    {
+        return $this->hasMany(TimetableEntry::class, 'course_db_id', 'db_id');
     }
 }

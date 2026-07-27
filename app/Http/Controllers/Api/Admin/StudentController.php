@@ -3,215 +3,222 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\RegisterStudent;
 use App\Models\Student;
+use App\Models\User;
 use App\Models\Program;
+use App\Models\Level;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Bus;
-use Illuminate\Support\LazyCollection;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class StudentController extends Controller
 {
-
     /**
-     * List Students with pagination and search.
+     * GET /api/v1/admin/students
      */
     public function index(Request $request)
     {
-        $query = Student::with('program');
+        $query = Student::with(['user', 'program', 'level']);
 
-        // ... (Keep your search and filter logic here) ...
+        // Optional filters
+        if ($request->filled('program_public_id')) {
+            $program = Program::where('public_id', $request->program_public_id)->first();
+            if ($program) {
+                $query->where('program_db_id', $program->db_id);
+            }
+        }
 
-        $students = $query->paginate(20)->through(function ($student) {
-            return [
-                'public_id'    => $student->public_id,
-                'student_id'   => $student->student_id,
-                'first_name'   => $student->first_name,
-                'last_name'    => $student->last_name,
-                'email'        => $student->email,
-                'gender'       => $student->gender,
-                'program'      => [
-                    'public_id' => $student->program->public_id ?? '',
-                    'name'      => $student->program->name ?? 'N/A',
-                    'code'      => $student->program->code ?? '',
-                ],
-                'current_semester_sequence' => $student->current_semester_sequence,
-                'status' => $student->status,
-            ];
-        });
+        if ($request->filled('level_public_id')) {
+            $level = Level::where('public_id', $request->level_public_id)->first();
+            if ($level) {
+                $query->where('level_db_id', $level->db_id);
+            }
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('first_name', 'like', "%{$search}%")
+                  ->orWhere('last_name', 'like', "%{$search}%")
+                  ->orWhere('id', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%");
+            });
+        }
+
+        $students = $query->orderBy('last_name')->paginate(20);
 
         return response()->json($students);
     }
 
     /**
-     * Create a new Student and their Login Account.
+     * POST /api/v1/admin/students
      */
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'first_name' => 'required|string',
-            'last_name' => 'required|string',
-            'email' => 'required|email|unique:users,email',
-            'program_code' => 'required|exists:programs,code',
-            'gender' => 'required|in:M,F',
-            'nrc_number' => 'required|string|unique:students,national_id',
-            'enrollment_date' => 'required|date',
-            'date_of_birth' => 'required|date',
-            'address' => 'required|string',
-            'phone_number' => 'required|string',
+            'first_name'          => 'required|string|max:255',
+            'last_name'           => 'required|string|max:255',
+            'national_id_number'  => 'required|string|max:255',
+            'gender'              => 'nullable|in:M,F',
+            'email'               => 'nullable|email|unique:users,email',
+            'dob'                 => 'nullable|date',
+            'address'             => 'nullable|string|max:255',
+            'phone'               => 'required|string|max:255',
+            'id'                  => 'required|string|unique:students,id', // Student ID e.g. 2025-BA-001
+            'program_public_id'   => 'required|exists:programs,public_id',
+            'level_public_id'     => 'required|exists:levels,public_id',
+            'enrollment_date'     => 'required|date',
+            'password'            => 'nullable|string|min:6',
         ]);
 
-        // Dispatch a single job (or run synchronously if preferred)
-        RegisterStudent::dispatchSync($validated);
+        $program = Program::where('public_id', $validated['program_public_id'])->firstOrFail();
+        $level   = Level::where('public_id', $validated['level_public_id'])->firstOrFail();
 
-        return response()->json(['message' => 'Student registration queued.'], 202);
+        // Create User first
+        $user = User::create([
+            'public_id' => (string) Str::uuid(),
+            'name'      => $validated['first_name'] . ' ' . $validated['last_name'],
+            'email'     => $validated['email'] ?? strtolower($validated['id']) . '@student.matemcollege.com',
+            'password'  => Hash::make($validated['password'] ?? 'password123'),
+            'role'      => 'student',
+        ]);
+
+        // Create Student profile
+        $student = Student::create([
+            'public_id'           => (string) Str::uuid(),
+            'first_name'          => $validated['first_name'],
+            'last_name'           => $validated['last_name'],
+            'national_id_number'  => $validated['national_id_number'],
+            'gender'              => $validated['gender'] ?? null,
+            'email'               => $validated['email'] ?? $user->email,
+            'dob'                 => $validated['dob'] ?? null,
+            'address'             => $validated['address'] ?? null,
+            'phone'               => $validated['phone'],
+            'id'                  => $validated['id'],
+            'program_db_id'       => $program->db_id,
+            'level_db_id'         => $level->db_id,
+            'enrollment_date'     => $validated['enrollment_date'],
+            'user_db_id'          => $user->db_id,
+        ]);
+
+        $student->load(['user', 'program', 'level']);
+
+        return response()->json([
+            'message' => 'Student created successfully',
+            'data'    => $student
+        ], 201);
     }
 
     /**
-     * Update an existing Student.
+     * GET /api/v1/admin/students/{public_id}
      */
-    public function update(Request $request, $public_id)
+    public function show($publicId)
     {
-        $student = Student::where('public_id', $public_id)->firstOrFail();
+        $student = Student::with(['user', 'program', 'level', 'results'])
+            ->where('public_id', $publicId)
+            ->firstOrFail();
+
+        return response()->json([
+            'data' => $student
+        ]);
+    }
+
+    /**
+     * PUT /api/v1/admin/students/{public_id}
+     */
+    public function update(Request $request, $publicId)
+    {
+        $student = Student::where('public_id', $publicId)->firstOrFail();
 
         $validated = $request->validate([
-            'first_name' => 'sometimes|required|string',
-            'last_name' => 'sometimes|required|string',
-            'email' => 'sometimes|required|email',
-            'program_code' => 'sometimes|required|exists:programs,code',
-            'gender' => 'sometimes|required|in:M,F',
-            'nrc_number' => 'sometimes|required|string|unique:students,national_id,' . $student->id,
-            'enrollment_date' => 'sometimes|required|date',
-            'date_of_birth' => 'sometimes|required|date',
-            'address' => 'sometimes|required|string',
-            'phone_number' => 'sometimes|required|string',
-            'status' => 'sometimes|required|string'
+            'first_name'          => 'sometimes|string|max:255',
+            'last_name'           => 'sometimes|string|max:255',
+            'national_id_number'  => 'sometimes|string|max:255',
+            'gender'              => 'nullable|in:M,F',
+            'email'               => ['nullable', 'email', Rule::unique('users', 'email')->ignore($student->user_db_id, 'db_id')],
+            'dob'                 => 'nullable|date',
+            'address'             => 'nullable|string|max:255',
+            'phone'               => 'sometimes|string|max:255',
+            'program_public_id'   => 'sometimes|exists:programs,public_id',
+            'level_public_id'     => 'sometimes|exists:levels,public_id',
         ]);
 
-        if (isset($validated['program_code'])) {
-            $program = Program::where('code', $validated['program_code'])->first();
-            $validated['program_id'] = $program->id;
-            unset($validated['program_code']);
+        if (isset($validated['program_public_id'])) {
+            $program = Program::where('public_id', $validated['program_public_id'])->firstOrFail();
+            $validated['program_db_id'] = $program->db_id;
+            unset($validated['program_public_id']);
         }
 
-        if (isset($validated['nrc_number'])) {
-            $validated['national_id'] = $validated['nrc_number'];
-            unset($validated['nrc_number']);
-        }
-
-        if (isset($validated['date_of_birth'])) {
-            $validated['dob'] = $validated['date_of_birth'];
-            unset($validated['date_of_birth']);
-        }
-
-        if (isset($validated['phone_number'])) {
-            $validated['phone'] = $validated['phone_number'];
-            unset($validated['phone_number']);
+        if (isset($validated['level_public_id'])) {
+            $level = Level::where('public_id', $validated['level_public_id'])->firstOrFail();
+            $validated['level_db_id'] = $level->db_id;
+            unset($validated['level_public_id']);
         }
 
         $student->update($validated);
 
-        return response()->json(['message' => 'Student updated successfully', 'data' => $student]);
+        // Also update user name/email if needed
+        if (isset($validated['first_name']) || isset($validated['last_name']) || isset($validated['email'])) {
+            $student->user->update([
+                'name'  => ($validated['first_name'] ?? $student->first_name) . ' ' . ($validated['last_name'] ?? $student->last_name),
+                'email' => $validated['email'] ?? $student->user->email,
+            ]);
+        }
+
+        $student->load(['user', 'program', 'level']);
+
+        return response()->json([
+            'message' => 'Student updated successfully',
+            'data'    => $student
+        ]);
     }
 
     /**
-     * Delete a Student.
+     * DELETE /api/v1/admin/students/{public_id}
      */
-    public function destroy($public_id)
+    public function destroy($publicId)
     {
-        $student = Student::where('public_id', $public_id)->firstOrFail();
+        $student = Student::where('public_id', $publicId)->firstOrFail();
+
+        // Optional: also delete the related user
+        // $student->user()->delete();
+
         $student->delete();
 
-        return response()->json(['message' => 'Student deleted successfully']);
+        return response()->json([
+            'message' => 'Student deleted successfully'
+        ]);
     }
 
     /**
-     * Batch create students from a CSV FILE.
+     * POST /api/v1/admin/students/batch-upload
+     * (Placeholder - implement CSV logic later)
      */
     public function batchUpload(Request $request)
     {
-        $request->validate([
-            'file' => 'required|file|mimes:csv,txt',
-        ]);
-
-        // 1. Store the file temporarily
-        $relativePath = $request->file('file')->store('temp');
-
-        // 2. Read the file efficiently using LazyCollection (Low Memory usage)
-        // We defer the heavy lifting to the queue dispatch
-        $jobs = LazyCollection::make(function () use ($relativePath) {
-            $handle = fopen(Storage::path($relativePath), 'r');
-            // Skip Header Row?
-            fgetcsv($handle);
-
-            while (($row = fgetcsv($handle)) !== false) {
-                // DATA CLEANUP: Trim whitespace from all fields
-                $row = array_map('trim', $row);
-
-                // SKIP empty rows
-                if (count($row) < 10) continue;
-
-                // Map CSV row to Job Data
-                yield new RegisterStudent([
-                    'last_name' => $row[0],
-                    'first_name' => $row[1],
-                    'nrc_number' => $row[2],
-                    'gender' => $row[3],
-                    'date_of_birth' => $row[4],
-                    'address' => $row[5],
-                    'email' => $row[6],
-                    'phone_number' => $row[7],
-                    'program_code' => $row[8],
-                    'semester' => $row[9],
-                    'enrollment_date' => $row[10],
-                ]);
-            }
-            fclose($handle);
-        });
-
-        // 3. Create the Batch
-        // Note: We convert the LazyCollection to an array for the batch() method.
-        $batch = Bus::batch($jobs->toArray())
-            ->name('Student CSV Import')
-            ->allowFailures()
-            ->dispatch();
-
         return response()->json([
-            'message' => 'Import started.',
-            'batch_id' => $batch->id
-        ], 202);
-
+            'message' => 'Batch upload endpoint - implementation pending'
+        ], 501);
     }
 
     /**
-     * Get a single Student by ID.
+     * POST /api/v1/admin/students/promotion-preview
      */
-    public function show($public_id)
+    public function promotionPreview(Request $request)
     {
-        $student = Student::with('program')->where('public_id', $public_id)->firstOrFail();
-
         return response()->json([
-            'data' => [
-                'public_id'    => $student->public_id,
-                'student_id'   => $student->student_id,
-                'first_name'   => $student->first_name,
-                'last_name'    => $student->last_name,
-                'email'        => $student->email,
-                'gender'       => $student->gender,
-                'program'      => [
-                    'public_id' => $student->program->public_id ?? '',
-                    'name'      => $student->program->name ?? 'N/A',
-                    'code'      => $student->program->code ?? '',
-                ],
-                'current_semester_sequence' => $student->current_semester_sequence,
-                'status' => $student->status,
-                'national_id'  => $student->national_id,
-                'dob'          => $student->dob ? $student->dob->format('Y-m-d') : null,
-                'address'      => $student->address,
-                'phone'        => $student->phone,
-            ]
-        ]);
+            'message' => 'Promotion preview endpoint - implementation pending'
+        ], 501);
     }
 
+    /**
+     * POST /api/v1/admin/students/promote
+     */
+    public function promote(Request $request)
+    {
+        return response()->json([
+            'message' => 'Promote endpoint - implementation pending'
+        ], 501);
+    }
 }

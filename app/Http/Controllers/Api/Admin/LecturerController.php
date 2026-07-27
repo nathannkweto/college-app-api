@@ -3,229 +3,177 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\RegisterLecturer;
 use App\Models\Lecturer;
+use App\Models\User;
 use App\Models\Department;
-use App\Services\NotificationService; // Import the Service
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Bus;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\LazyCollection;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class LecturerController extends Controller
 {
-    protected $notifier;
-
-    // Inject the NotificationService
-    public function __construct(NotificationService $notifier)
-    {
-        $this->notifier = $notifier;
-    }
-
     /**
-     * List Lecturers.
+     * GET /api/v1/admin/lecturers
      */
     public function index(Request $request)
     {
-        $query = Lecturer::with('department');
+        $query = Lecturer::with(['user', 'department']);
 
-        if ($request->has('department_public_id')) {
-            $dept = Department::where('public_id', $request->department_public_id)->first();
-            if ($dept) $query->where('department_id', $dept->id);
+        if ($request->filled('department_public_id')) {
+            $department = Department::where('public_id', $request->department_public_id)->first();
+            if ($department) {
+                $query->where('department_db_id', $department->db_id);
+            }
         }
 
-        // Explicitly map the data to match your OpenAPI Spec keys
-        $paginated = $query->paginate(15);
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('first_name', 'like', "%{$search}%")
+                  ->orWhere('last_name', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%")
+                  ->orWhere('id', 'like', "%{$search}%");
+            });
+        }
 
-        return response()->json([
-            'data' => $paginated->getCollection()->map(function ($lecturer) {
-                return [
-                    'public_id' => $lecturer->public_id,
-                    'lecturer_id' => $lecturer->lecturer_id,
-                    'first_name' => $lecturer->first_name,
-                    'last_name' => $lecturer->last_name,
-                    'email' => $lecturer->email,
-                    'title' => $lecturer->title,  // Must match Mr, Ms, etc.
-                    'gender' => $lecturer->gender, // Must match M, F
-                    'department' => [
-                        'id' => $lecturer->department->id,
-                        'name' => $lecturer->department->name,
-                        'code' => $lecturer->department->code,
-                    ],
-                    'national_id' => $lecturer->national_id,
-                    'dob' => $lecturer->dob ? $lecturer->dob->format('Y-m-d') : null,
-                    'address' => $lecturer->address,
-                    'phone' => $lecturer->phone,
-                ];
-            }),
-            'meta' => [
-                'current_page' => $paginated->currentPage(),
-                'last_page' => $paginated->lastPage(),
-                'total' => $paginated->total(),
-            ]
-        ]);
+        $lecturers = $query->orderBy('last_name')->paginate(20);
+
+        return response()->json($lecturers);
     }
 
     /**
-     * Create a new Lecturer and User account.
+     * POST /api/v1/admin/lecturers
      */
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'first_name' => 'required|string',
-            'last_name' => 'required|string',
-            'email' => 'required|email|unique:users,email',
-            'department_code' => 'required|exists:departments,code',
-            'gender' => 'required|in:M,F',
-            'title' => 'required|string',
-            'nrc_number' => 'required|string|unique:lecturers,national_id',
-            'date_of_birth' => 'required|date',
-            'address' => 'required|string',
-            'phone_number' => 'required|string',
+            'first_name'            => 'required|string|max:255',
+            'last_name'             => 'required|string|max:255',
+            'email'                 => 'required|email|unique:users,email|unique:lecturers,email',
+            'gender'                => 'required|in:M,F',
+            'title'                 => 'required|in:Mr,Ms,Mrs,Dr,Prof',
+            'phone'                 => 'required|string|max:255',
+            'id'                    => 'required|string|unique:lecturers,id',
+            'department_public_id'  => 'required|exists:departments,public_id',
+            'employment_date'       => 'required|date',
+            'password'              => 'nullable|string|min:6',
         ]);
 
-        RegisterLecturer::dispatchSync($validated);
+        $department = Department::where('public_id', $validated['department_public_id'])->firstOrFail();
 
-        return response()->json(['message' => 'Lecturer registration queued.'], 202);
+        // Create User
+        $user = User::create([
+            'public_id' => (string) Str::uuid(),
+            'name'      => $validated['first_name'] . ' ' . $validated['last_name'],
+            'email'     => $validated['email'],
+            'password'  => Hash::make($validated['password'] ?? 'password123'),
+            'role'      => 'lecturer',
+        ]);
+
+        // Create Lecturer
+        $lecturer = Lecturer::create([
+            'public_id'         => (string) Str::uuid(),
+            'first_name'        => $validated['first_name'],
+            'last_name'         => $validated['last_name'],
+            'email'             => $validated['email'],
+            'gender'            => $validated['gender'],
+            'title'             => $validated['title'],
+            'phone'             => $validated['phone'],
+            'id'                => $validated['id'],
+            'department_db_id'  => $department->db_id,
+            'employment_date'   => $validated['employment_date'],
+            'user_db_id'        => $user->db_id,
+        ]);
+
+        $lecturer->load(['user', 'department']);
+
+        return response()->json([
+            'message' => 'Lecturer created successfully',
+            'data'    => $lecturer
+        ], 201);
     }
 
     /**
-     * Update an existing Lecturer.
+     * GET /api/v1/admin/lecturers/{public_id}
      */
-    public function update(Request $request, $public_id)
+    public function show($publicId)
     {
-        $lecturer = Lecturer::where('public_id', $public_id)->firstOrFail();
+        $lecturer = Lecturer::with(['user', 'department'])
+            ->where('public_id', $publicId)
+            ->firstOrFail();
+
+        return response()->json([
+            'data' => $lecturer
+        ]);
+    }
+
+    /**
+     * PUT /api/v1/admin/lecturers/{public_id}
+     */
+    public function update(Request $request, $publicId)
+    {
+        $lecturer = Lecturer::where('public_id', $publicId)->firstOrFail();
 
         $validated = $request->validate([
-            'first_name' => 'sometimes|required|string',
-            'last_name' => 'sometimes|required|string',
-            'email' => 'sometimes|required|email',
-            'department_code' => 'sometimes|required|exists:departments,code',
-            'gender' => 'sometimes|required|in:M,F',
-            'title' => 'sometimes|required|string',
-            'nrc_number' => 'sometimes|required|string|unique:lecturers,national_id,' . $lecturer->id,
-            'date_of_birth' => 'sometimes|required|date',
-            'address' => 'sometimes|required|string',
-            'phone_number' => 'sometimes|required|string',
+            'first_name'            => 'sometimes|string|max:255',
+            'last_name'             => 'sometimes|string|max:255',
+            'email'                 => [
+                'sometimes', 'email',
+                Rule::unique('users', 'email')->ignore($lecturer->user_db_id, 'db_id'),
+                Rule::unique('lecturers', 'email')->ignore($lecturer->db_id, 'db_id'),
+            ],
+            'gender'                => 'sometimes|in:M,F',
+            'title'                 => 'sometimes|in:Mr,Ms,Mrs,Dr,Prof',
+            'phone'                 => 'sometimes|string|max:255',
+            'department_public_id'  => 'sometimes|exists:departments,public_id',
+            'employment_date'       => 'sometimes|date',
         ]);
 
-        if (isset($validated['department_code'])) {
-            $dept = Department::where('code', $validated['department_code'])->first();
-            $validated['department_id'] = $dept->id;
-            unset($validated['department_code']);
-        }
-
-        if (isset($validated['nrc_number'])) {
-            $validated['national_id'] = $validated['nrc_number'];
-            unset($validated['nrc_number']);
-        }
-
-        if (isset($validated['date_of_birth'])) {
-            $validated['dob'] = $validated['date_of_birth'];
-            unset($validated['date_of_birth']);
-        }
-
-        if (isset($validated['phone_number'])) {
-            $validated['phone'] = $validated['phone_number'];
-            unset($validated['phone_number']);
+        if (isset($validated['department_public_id'])) {
+            $department = Department::where('public_id', $validated['department_public_id'])->firstOrFail();
+            $validated['department_db_id'] = $department->db_id;
+            unset($validated['department_public_id']);
         }
 
         $lecturer->update($validated);
 
-        return response()->json(['message' => 'Lecturer updated successfully', 'data' => $lecturer]);
+        // Sync user data
+        if (isset($validated['first_name']) || isset($validated['last_name']) || isset($validated['email'])) {
+            $lecturer->user->update([
+                'name'  => ($validated['first_name'] ?? $lecturer->first_name) . ' ' . ($validated['last_name'] ?? $lecturer->last_name),
+                'email' => $validated['email'] ?? $lecturer->user->email,
+            ]);
+        }
+
+        $lecturer->load(['user', 'department']);
+
+        return response()->json([
+            'message' => 'Lecturer updated successfully',
+            'data'    => $lecturer
+        ]);
     }
 
     /**
-     * Delete a Lecturer.
+     * DELETE /api/v1/admin/lecturers/{public_id}
      */
-    public function destroy($public_id)
+    public function destroy($publicId)
     {
-        $lecturer = Lecturer::where('public_id', $public_id)->firstOrFail();
+        $lecturer = Lecturer::where('public_id', $publicId)->firstOrFail();
         $lecturer->delete();
 
-        return response()->json(['message' => 'Lecturer deleted successfully']);
-    }
-
-    public function batchUpload(Request $request)
-    {
-        $request->validate([
-            'file' => 'required|file|mimes:csv,txt',
-        ]);
-
-        // 1. Store the file temporarily
-        $relativePath = $request->file('file')->store('temp');
-
-        // 2. Read the file efficiently using LazyCollection (Low Memory usage)
-        // We defer the heavy lifting to the queue dispatch
-        $jobs = LazyCollection::make(function () use ($relativePath) {
-            $handle = fopen(Storage::path($relativePath), 'r');
-            // Skip Header Row?
-            fgetcsv($handle);
-
-            while (($row = fgetcsv($handle)) !== false) {
-                // DATA CLEANUP: Trim whitespace from all fields
-                $row = array_map('trim', $row);
-
-                // SKIP empty rows
-                if (count($row) < 10) continue;
-
-                // Map CSV row to Job Data
-                yield new RegisterLecturer([
-                    'last_name' => $row[0],
-                    'first_name' => $row[1],
-                    'nrc_number' => $row[2],
-                    'gender' => $row[3],
-                    'title' => $row[4],
-                    'date_of_birth' => $row[5],
-                    'address' => $row[6],
-                    'email' => $row[7],
-                    'phone_number' => $row[8],
-                    'department_code' => $row[9],
-                ]);
-            }
-            fclose($handle);
-        });
-
-        // 3. Create the Batch
-        // Note: We convert the LazyCollection to an array for the batch() method.
-        $batch = Bus::batch($jobs->toArray())
-            ->name('Lecturer CSV Import')
-            ->allowFailures()
-            ->dispatch();
-
         return response()->json([
-            'message' => 'Import started.',
-            'batch_id' => $batch->id
-        ], 202);
-
+            'message' => 'Lecturer deleted successfully'
+        ]);
     }
 
     /**
-     * Get a single Lecturer by ID.
+     * POST /api/v1/admin/lecturers/batch-upload
      */
-    public function show($public_id)
+    public function batchUpload(Request $request)
     {
-        $lecturer = Lecturer::with('department')->where('public_id', $public_id)->firstOrFail();
-
         return response()->json([
-            'data' => [
-                'public_id'   => $lecturer->public_id,
-                'lecturer_id' => $lecturer->lecturer_id,
-                'first_name'  => $lecturer->first_name,
-                'last_name'   => $lecturer->last_name,
-                'email'       => $lecturer->email,
-                'title'       => $lecturer->title,
-                'gender'      => $lecturer->gender,
-                'department'  => [
-                    'id'   => $lecturer->department->id,
-                    'name' => $lecturer->department->name,
-                    'code' => $lecturer->department->code,
-                ],
-                'national_id' => $lecturer->national_id,
-                'dob'         => $lecturer->dob ? $lecturer->dob->format('Y-m-d') : null,
-                'address'     => $lecturer->address,
-                'phone'       => $lecturer->phone,
-            ]
-        ]);
+            'message' => 'Batch upload endpoint - implementation pending'
+        ], 501);
     }
 }

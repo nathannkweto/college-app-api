@@ -6,7 +6,7 @@ use App\Traits\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
-class Admin extends Model
+class Transcript extends Model
 {
     use HasPublicId;
 
@@ -14,11 +14,7 @@ class Admin extends Model
 
     protected $fillable = [
         'public_id',
-        'first_name',
-        'last_name',
-        'phone',
-        'id',               // e.g. ADM001, DEV-1
-        'user_db_id',
+        'student_db_id',
     ];
 
     protected $hidden = [
@@ -32,15 +28,15 @@ class Admin extends Model
 
     protected static function booted()
     {
-        static::creating(function (Admin $admin) {
-            if (empty($admin->public_id)) {
-                $admin->public_id = (string) Str::uuid();
+        static::creating(function (Transcript $transcript) {
+            if (empty($transcript->public_id)) {
+                $transcript->public_id = (string) Str::uuid();
             }
         });
     }
 
-    public function user()
+    public function student()
     {
-        return $this->belongsTo(User::class, 'user_db_id', 'db_id');
+        return $this->belongsTo(Student::class, 'student_db_id', 'db_id');
     }
 }

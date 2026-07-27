@@ -3,183 +3,139 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\FinanceFee;
-use App\Models\FinanceTransaction;
+use App\Models\Fee;
 use App\Models\Student;
-use App\Models\Program;
+use App\Models\Transaction;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class FinanceController extends Controller
 {
     /**
-     * Display a listing of financial transactions.
-     */
-    public function indexTransactions()
-    {
-        $transactions = FinanceTransaction::with(['financeFee.student'])
-            ->latest('date')
-            ->limit(100)
-            ->get()
-            ->map(function ($t) {
-                return [
-                    'public_id'      => $t->public_id,
-                    'transaction_id' => $t->transaction_id,
-                    'type'           => $t->type,
-                    'title'          => $t->title,
-                    // FORCE CAST TO FLOAT HERE
-                    'amount'         => (float) $t->amount,
-                    'date'           => $t->date ? $t->date->format('Y-m-d') : null,
-                    'fee_public_id'  => $t->financeFee?->public_id,
-                    'note'           => $t->note,
-                ];
-            });
-
-        return response()->json(['data' => $transactions]);
-    }
-
-    /**
-     * Fetch all fees for a specific student.
-     */
-    public function getStudentFees($studentInput)
-    {
-        // 1. Find the student (supports UUID or Human Readable ID like "ST-2024-001")
-        $student = Student::where('student_id', $studentInput)
-            ->orWhere('public_id', $studentInput)
-            ->firstOrFail();
-
-        // 2. Get fees for this student, ordered by due date
-        $fees = FinanceFee::with('student.program') // Eager load to be safe
-        ->where('student_id', $student->id)
-            ->orderBy('due_date', 'asc')
-            ->get()
-            ->map(function ($fee) {
-                return [
-                    'public_id'    => $fee->public_id,
-                    // The Spec expects a 'student' object inside
-                    'student'      => [
-                        'public_id'  => $fee->student->public_id,
-                        'student_id' => $fee->student->student_id,
-                        'first_name' => $fee->student->first_name,
-                        'last_name'  => $fee->student->last_name,
-                        'email'      => $fee->student->email,
-                        'program'    => [
-                            'name' => $fee->student->program->name ?? 'N/A',
-                            'code' => $fee->student->program->code ?? '',
-                        ]
-                    ],
-                    'title'        => $fee->title,
-                    'total_amount' => (float) $fee->total_amount, // Cast to ensure double
-                    'balance'      => (float) $fee->balance,
-                    'status'       => $fee->balance <= 0 ? 'cleared' : ($fee->balance < $fee->total_amount ? 'partial' : 'pending'),
-                    'due_date'     => $fee->due_date ? $fee->due_date->format('Y-m-d') : null,
-                ];
-            });
-
-        // 3. IMPORTANT: Wrap in 'data' to match OpenAPI "FinanceFeesGet200Response"
-        return response()->json(['data' => $fees]);
-    }
-
-    /**
-     * Create Invoices (Bulk or Single).
+     * POST /api/v1/admin/finance/fees
      */
     public function storeFee(Request $request)
     {
-        // 1. Validate
         $validated = $request->validate([
-            'title' => 'required|string',
-            'amount' => 'required|numeric',
-            'target_type' => 'required|in:ALL,PROGRAM,STUDENT',
-            'target_public_id' => 'nullable|string',
-            'due_date' => 'nullable|date'
+            'student_public_id'    => 'required|exists:students,public_id',
+            'status'               => 'required|in:pending,paid',
+            'transaction_public_id'=> 'nullable|exists:transactions,public_id',
+            // Optional: create a transaction at the same time
+            'title'                => 'nullable|string|max:255',
+            'amount'               => 'nullable|numeric|min:0',
+            'type'                 => 'nullable|in:income,expense',
+            'date'                 => 'nullable|date',
+            'note'                 => 'nullable|string',
+        ]); 
+
+        $student = Student::where('public_id', $validated['student_public_id'])->firstOrFail();
+
+        $transactionId = null;
+
+        // Optionally create a transaction
+        if (!empty($validated['title']) && !empty($validated['amount'])) {
+            $transaction = Transaction::create([
+                'public_id' => (string) Str::uuid(),
+                'title'     => $validated['title'],
+                'type'      => $validated['type'] ?? 'income',
+                'amount'    => $validated['amount'],
+                'date'      => $validated['date'] ?? now()->toDateString(),
+                'note'      => $validated['note'] ?? null,
+            ]);
+            $transactionId = $transaction->db_id;
+        } elseif (!empty($validated['transaction_public_id'])) {
+            $transaction = Transaction::where('public_id', $validated['transaction_public_id'])->firstOrFail();
+            $transactionId = $transaction->db_id;
+        }
+
+        if (!$transactionId) {
+            return response()->json([
+                'message' => 'Either provide transaction_public_id or title + amount to create a new transaction'
+            ], 422);
+        }
+
+        $fee = Fee::create([
+            'public_id'         => (string) Str::uuid(),
+            'student_db_id'     => $student->db_id,
+            'status'            => $validated['status'],
+            'transaction_db_id' => $transactionId,
         ]);
 
-        $studentsToInvoice = [];
+        $fee->load(['student', 'transaction']);
 
-        // 2. Determine Targets
-        switch ($validated['target_type']) {
-            case 'ALL':
-                $studentsToInvoice = Student::where('status', 'active')->get();
-                break;
-
-            case 'PROGRAM':
-                $prog = Program::where('public_id', $validated['target_public_id'])->firstOrFail();
-
-                $studentsToInvoice = Student::where('program_id', $prog->id)
-                    ->where('status', 'active')
-                    ->get();
-                break;
-
-            case 'STUDENT':
-                $input = trim($validated['target_public_id']);
-
-                // Search by 'student_id' OR 'public_id'
-                $student = Student::where('student_id', $input)
-                    ->orWhere('public_id', $input)
-                    ->first();
-
-                if (!$student) {
-                    return response()->json([
-                        'message' => "Student not found with ID: {$input}",
-                        'errors' => ['target_public_id' => ["ID '{$input}' does not exist."]]
-                    ], 404);
-                }
-
-                $studentsToInvoice = [$student];
-                break;
-        }
-
-        // 3. Create Invoices
-        $count = 0;
-        foreach ($studentsToInvoice as $student) {
-            FinanceFee::create([
-                'student_id' => $student->id,
-                'title' => $validated['title'],
-                'total_amount' => $validated['amount'],
-                'balance' => $validated['amount'],
-                'due_date' => $validated['due_date'] ?? null,
-            ]);
-            $count++;
-        }
-
-        return response()->json(['message' => "Generated invoices for {$count} students."]);
+        return response()->json([
+            'message' => 'Fee record created successfully',
+            'data'    => $fee
+        ], 201);
     }
 
     /**
-     * Record a Payment or Expense.
+     * GET /api/v1/admin/finance/students/{student_id}/fees
+     * Note: {student_id} is the public_id of the student
+     */
+    public function getStudentFees($studentPublicId)
+    {
+        $student = Student::where('public_id', $studentPublicId)->firstOrFail();
+
+        $fees = Fee::with('transaction')
+            ->where('student_db_id', $student->db_id)
+            ->orderByDesc('created_at')
+            ->get();
+
+        return response()->json([
+            'data' => $fees
+        ]);
+    }
+
+    /**
+     * GET /api/v1/admin/finance/transactions
+     */
+    public function indexTransactions(Request $request)
+    {
+        $query = Transaction::query();
+
+        if ($request->filled('type')) {
+            $query->where('type', $request->type);
+        }
+
+        if ($request->filled('from_date')) {
+            $query->whereDate('date', '>=', $request->from_date);
+        }
+
+        if ($request->filled('to_date')) {
+            $query->whereDate('date', '<=', $request->to_date);
+        }
+
+        $transactions = $query->orderByDesc('date')->paginate(20);
+
+        return response()->json($transactions);
+    }
+
+    /**
+     * POST /api/v1/admin/finance/transactions
      */
     public function storeTransaction(Request $request)
     {
         $validated = $request->validate([
-            'title' => 'required|string',
-            'amount' => 'required|numeric',
-            'type' => 'required|in:income,expense',
-            'date' => 'required|date',
-            'fee_public_id' => 'nullable|exists:finance_fees,public_id',
-            'transaction_id' => 'required|string'
+            'title'  => 'required|string|max:255',
+            'type'   => 'required|in:income,expense',
+            'amount' => 'required|numeric|min:0',
+            'date'   => 'required|date',
+            'note'   => 'nullable|string',
         ]);
 
-        $feeId = null;
-        if (!empty($validated['fee_public_id'])) {
-            // 1. Fetch the Fee AND the Student
-            $fee = FinanceFee::with('student')->where('public_id', $validated['fee_public_id'])->first();
-
-            if ($fee) {
-                $feeId = $fee->id;
-
-                // 2. OVERRIDE the title to use the readable Student ID
-                $validated['title'] = "Fee Payment - " . $fee->student->student_id . " " . $fee->title;
-            }
-        }
-
-        $transaction = FinanceTransaction::create([
-            'title' => $validated['title'],
-            'amount' => $validated['amount'],
-            'type' => $validated['type'],
-            'date' => $validated['date'],
-            'transaction_id' => $validated['transaction_id'],
-            'finance_fee_id' => $feeId
+        $transaction = Transaction::create([
+            'public_id' => (string) Str::uuid(),
+            'title'     => $validated['title'],
+            'type'      => $validated['type'],
+            'amount'    => $validated['amount'],
+            'date'      => $validated['date'],
+            'note'      => $validated['note'] ?? null,
         ]);
 
-        return response()->json($transaction, 201);
+        return response()->json([
+            'message' => 'Transaction created successfully',
+            'data'    => $transaction
+        ], 201);
     }
 }

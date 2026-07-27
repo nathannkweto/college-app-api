@@ -4,48 +4,82 @@ namespace App\Models;
 
 use App\Traits\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class Student extends Model
 {
     use HasPublicId;
 
-    protected $guarded = ['id'];
+    protected $primaryKey = 'db_id';
 
-    protected $casts = [
-        'enrollment_date' => 'date',
-        'dob' => 'date',
+    protected $fillable = [
+        'public_id',
+        'first_name',
+        'last_name',
+        'national_id_number',
+        'gender',
+        'email',
+        'dob',
+        'address',
+        'id',                   // Student ID e.g. 2025-BA-001
+        'phone',
+        'level_db_id',
+        'program_db_id',
+        'enrollment_date',
+        'user_db_id',
     ];
 
-    // 1. Relationships
-    public function user() {
-            return $this->belongsTo(User::class);
-        }
+    protected $casts = [
+        'dob'             => 'date',
+        'enrollment_date' => 'date',
+    ];
+
+    protected $hidden = [
+        'db_id',
+    ];
+
+    public function getRouteKeyName()
+    {
+        return 'public_id';
+    }
+
+    protected static function booted()
+    {
+        static::creating(function (Student $student) {
+            if (empty($student->public_id)) {
+                $student->public_id = (string) Str::uuid();
+            }
+        });
+    }
+
+    // Relationships
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_db_id', 'db_id');
+    }
+
     public function program()
     {
-        return $this->belongsTo(Program::class);
+        return $this->belongsTo(Program::class, 'program_db_id', 'db_id');
+    }
+
+    public function level()
+    {
+        return $this->belongsTo(Level::class, 'level_db_id', 'db_id');
+    }
+
+    public function results()
+    {
+        return $this->hasMany(Result::class, 'student_db_id', 'db_id');
     }
 
     public function fees()
     {
-        return $this->hasMany(FinanceFee::class);
+        return $this->hasMany(Fee::class, 'student_db_id', 'db_id');
     }
 
-    public function enrollments()
+    public function transcript()
     {
-        return $this->hasMany(Enrollment::class);
-    }
-
-    /**
-     * Helper: Calculate Total Balance
-     */
-    public function getOutstandingBalanceAttribute()
-    {
-        return $this->fees()->where('status', '!=', 'cleared')->sum('balance');
-    }
-
-    public function scopeInClass($query, $programId, $sequence)
-    {
-        return $query->where('program_id', $programId)
-            ->where('current_semester_sequence', $sequence);
+        return $this->hasOne(Transcript::class, 'student_db_id', 'db_id');
     }
 }

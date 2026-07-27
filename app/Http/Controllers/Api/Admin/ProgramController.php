@@ -4,196 +4,112 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Program;
-use App\Models\Course;
+use App\Models\Level;
 use App\Models\Department;
-use App\Models\Qualification;
+use App\Models\Course;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class ProgramController extends Controller
 {
     /**
-     * List Programs with their Dept/Qual info.
+     * GET /api/v1/admin/programs
      */
-    public function index()
+    public function index(Request $request)
     {
-        $programs = Program::with(['department', 'qualification'])->get()->map(function ($p) {
-            return [
-                'public_id' => $p->public_id,
-                'name' => $p->name,
-                'code' => $p->code,
-                'total_semesters' => $p->total_semesters,
+        $query = Program::with(['level', 'department']);
 
-                'department' => $p->department ? [
-                    'public_id' => $p->department->public_id,
-                    'name' => $p->department->name,
-                    'code' => $p->department->code,
-                ] : null,
+        if ($request->filled('department_public_id')) {
+            $department = Department::where('public_id', $request->department_public_id)->first();
+            if ($department) {
+                $query->where('department_db_id', $department->db_id);
+            }
+        }
 
-                'qualification' => $p->qualification ? [
-                    'public_id' => $p->qualification->public_id,
-                    'name' => $p->qualification->name,
-                    'code' => $p->qualification->code,
-                ] : null,
-            ];
-        });
+        if ($request->filled('level_public_id')) {
+            $level = Level::where('public_id', $request->level_public_id)->first();
+            if ($level) {
+                $query->where('level_db_id', $level->db_id);
+            }
+        }
 
-        return response()->json(['data' => $programs]);
+        $programs = $query->orderBy('name')->get();
+
+        return response()->json([
+            'data' => $programs
+        ]);
     }
 
     /**
-     * Create a Program.
+     * POST /api/v1/admin/programs
      */
     public function store(Request $request)
     {
-        $request->validate([
-            'name' => 'required|string',
-            'code' => 'required|string|unique:programs,code',
-            'total_semesters' => 'required|integer|min:1',
+        $validated = $request->validate([
+            'name'                 => 'required|string|max:255',
+            'tag'                  => 'required|string|max:20',
+            'program_number'       => 'required|integer',
+            'level_public_id'      => 'required|exists:levels,public_id',
             'department_public_id' => 'required|exists:departments,public_id',
-            'qualification_public_id' => 'required|exists:qualifications,public_id',
         ]);
 
-        $dept = Department::where('public_id', $request->department_public_id)->first();
-        $qual = Qualification::where('public_id', $request->qualification_public_id)->first();
+        $level = Level::where('public_id', $validated['level_public_id'])->firstOrFail();
+        $department = Department::where('public_id', $validated['department_public_id'])->firstOrFail();
 
         $program = Program::create([
-            'name' => $request->name,
-            'code' => $request->code,
-            'total_semesters' => $request->total_semesters,
-            'department_id' => $dept->id,
-            'qualification_id' => $qual->id,
+            'public_id'        => (string) Str::uuid(),
+            'name'             => $validated['name'],
+            'tag'              => strtoupper($validated['tag']),
+            'program_number'   => $validated['program_number'],
+            'level_db_id'      => $level->db_id,
+            'department_db_id' => $department->db_id,
         ]);
 
-        return response()->json(['message' => 'Program created', 'data' => $program], 201);
+        $program->load(['level', 'department']);
+
+        return response()->json([
+            'message' => 'Program created successfully',
+            'data'    => $program
+        ], 201);
     }
 
     /**
-     * Update an existing Program.
+     * GET /api/v1/admin/programs/{public_id}/courses
+     * Note: Currently there is no program_courses pivot table.
+     * This returns courses belonging to the same department as a temporary solution.
      */
-    public function update(Request $request, $public_id)
+    public function getCourses($publicId)
     {
-        $program = Program::where('public_id', $public_id)->firstOrFail();
+        $program = Program::with('department')->where('public_id', $publicId)->firstOrFail();
 
-        $request->validate([
-            'name' => 'sometimes|required|string',
-            'code' => 'sometimes|required|string|unique:programs,code,' . $program->id,
-            'total_semesters' => 'sometimes|required|integer|min:1',
-            'department_public_id' => 'sometimes|required|exists:departments,public_id',
-            'qualification_public_id' => 'sometimes|required|exists:qualifications,public_id',
+        $courses = Course::where('department_db_id', $program->department_db_id)
+            ->orderBy('name')
+            ->get();
+
+        return response()->json([
+            'data' => $courses
         ]);
-
-        $data = $request->only(['name', 'code', 'total_semesters']);
-
-        if ($request->has('department_public_id')) {
-            $dept = Department::where('public_id', $request->department_public_id)->first();
-            $data['department_id'] = $dept->id;
-        }
-
-        if ($request->has('qualification_public_id')) {
-            $qual = Qualification::where('public_id', $request->qualification_public_id)->first();
-            $data['qualification_id'] = $qual->id;
-        }
-
-        $program->update($data);
-
-        return response()->json(['message' => 'Program updated successfully', 'data' => $program]);
     }
 
     /**
-     * Delete a Program.
+     * POST /api/v1/admin/programs/{public_id}/courses
+     * Note: No pivot table exists yet. This is a placeholder.
      */
-    public function destroy($public_id)
+    public function attachCourse(Request $request, $publicId)
     {
-        $program = Program::where('public_id', $public_id)->firstOrFail();
-        $program->delete();
-
-        return response()->json(['message' => 'Program deleted successfully']);
+        return response()->json([
+            'message' => 'Attach course endpoint - requires program_courses table (not yet implemented)'
+        ], 501);
     }
 
     /**
-     * Get the curriculum (attached courses) for a program.
+     * DELETE /api/v1/admin/programs/{public_id}/courses/{course_public_id}
+     * Note: No pivot table exists yet. This is a placeholder.
      */
-    public function getCourses($public_id)
+    public function detachCourse($publicId, $coursePublicId)
     {
-        $program = Program::where('public_id', $public_id)->firstOrFail();
-
-        // 1. Get courses with the pivot data (semester_sequence, lecturer_id)
-        $courses = $program->courses;
-
-        // 2. Optimization: Fetch all involved lecturers in one query to avoid N+1 issues
-        $lecturerIds = $courses->pluck('pivot.lecturer_id')->filter()->unique();
-        $lecturers = \App\Models\Lecturer::whereIn('id', $lecturerIds)->get()->keyBy('id');
-
-        // 3. Map the response
-        $curriculum = $courses->map(function ($course) use ($lecturers) {
-            $lecturer = null;
-            if ($course->pivot->lecturer_id && isset($lecturers[$course->pivot->lecturer_id])) {
-                $l = $lecturers[$course->pivot->lecturer_id];
-                $lecturer = [
-                    'public_id' => $l->public_id,
-                    'name'      => $l->title . ' ' . $l->first_name . ' ' . $l->last_name,
-                ];
-            }
-
-            return [
-                'public_id' => $course->public_id,
-                'name' => $course->name,
-                'code' => $course->code,
-                'pivot' => [
-                    'semester_sequence' => $course->pivot->semester_sequence,
-                    'lecturer' => $lecturer, // <--- Now includes the lecturer object!
-                ],
-            ];
-        });
-
-        return response()->json(['data' => $curriculum]);
-    }
-
-    /**
-     * Attach (or Update) a course in a program.
-     */
-    public function attachCourse(Request $request, $public_id)
-    {
-        $request->validate([
-            'course_public_id' => 'required|exists:courses,public_id',
-            'semester_sequence' => 'required|integer|min:1',
-            'lecturer_public_id' => 'nullable|exists:lecturers,public_id' // <--- New Validation
-        ]);
-
-        $program = Program::where('public_id', $public_id)->firstOrFail();
-        $course = Course::where('public_id', $request->course_public_id)->firstOrFail();
-
-        $lecturerId = null;
-        if ($request->filled('lecturer_public_id')) {
-            $lecturer = \App\Models\Lecturer::where('public_id', $request->lecturer_public_id)->first();
-            $lecturerId = $lecturer ? $lecturer->id : null;
-        }
-
-        if ($request->semester_sequence > $program->total_semesters) {
-            return response()->json(['message' => 'Semester sequence exceeds program duration.'], 422);
-        }
-
-        $program->courses()->syncWithoutDetaching([
-            $course->id => [
-                'semester_sequence' => $request->semester_sequence,
-                'lecturer_id' => $lecturerId
-            ]
-        ]);
-
-        return response()->json(['message' => 'Course updated in curriculum successfully.']);
-    }
-
-    /**
-     * Remove a course from a program.
-     */
-    public function detachCourse($program_public_id, $course_public_id)
-    {
-        $program = Program::where('public_id', $program_public_id)->firstOrFail();
-        $course = Course::where('public_id', $course_public_id)->firstOrFail();
-
-        $program->courses()->detach($course->id);
-
-        return response()->json(['message' => 'Course removed from curriculum.']);
+        return response()->json([
+            'message' => 'Detach course endpoint - requires program_courses table (not yet implemented)'
+        ], 501);
     }
 }

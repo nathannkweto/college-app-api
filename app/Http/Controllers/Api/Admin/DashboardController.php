@@ -6,60 +6,60 @@ use App\Http\Controllers\Controller;
 use App\Models\Student;
 use App\Models\Lecturer;
 use App\Models\Program;
+use App\Models\Department;
+use App\Models\Course;
 use App\Models\Semester;
-use App\Models\Qualification;
-use App\Models\FinanceTransaction;
-use Illuminate\Http\JsonResponse;
+use App\Models\Fee;
+use App\Models\Transaction;
+use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
     /**
-     * GET /dashboard/metrics
-     * Returns core counts for the dashboard KPI cards.
+     * GET /api/v1/admin/dashboard/metrics
      */
-    public function metrics(): JsonResponse
+    public function metrics()
     {
-        // 1. Calculate Core Counts
-        $studentsCount = Student::where('status', 'active')->count();
-        $lecturersCount = Lecturer::count();
-        $programsCount = Program::count();
-        $levelsCount = Qualification::count();
+        $activeSemester = Semester::where('is_active', true)->first();
 
         return response()->json([
             'data' => [
-                'students'  => $studentsCount,
-                'lecturers' => $lecturersCount,
-                'programs'  => $programsCount,
-                'levels'    => $levelsCount,
+                'total_students'     => Student::count(),
+                'total_lecturers'    => Lecturer::count(),
+                'total_programs'     => Program::count(),
+                'total_departments'  => Department::count(),
+                'total_courses'      => Course::count(),
+                'active_semester'    => $activeSemester ? [
+                    'public_id'       => $activeSemester->public_id,
+                    'semester_number' => $activeSemester->semester_number,
+                    'academic_year'   => $activeSemester->academic_year,
+                    'start_date'      => $activeSemester->start_date,
+                ] : null,
             ]
         ]);
     }
 
     /**
-     * GET /dashboard/finance
-     * Returns financial health overview.
+     * GET /api/v1/admin/dashboard/finance
      */
-    public function finance(): JsonResponse
+    public function finance()
     {
-        // 1. Calculate Financial Totals (All Time)
-        $totalIncome = FinanceTransaction::where('type', 'income')->sum('amount');
-        $totalExpenses = FinanceTransaction::where('type', 'expense')->sum('amount');
+        $totalIncome = Transaction::where('type', 'income')->sum('amount');
+        $totalExpense = Transaction::where('type', 'expense')->sum('amount');
 
-        $netBalance = $totalIncome - $totalExpenses;
-
-        // 2. Get Active Semester Name for display
-        $activeSemester = Semester::where('is_active', 'true')->first();
-
-        $semesterName = $activeSemester
-            ? "{$activeSemester->academic_year} (Sem {$activeSemester->semester_number})"
-            : "No Active Semester";
+        $pendingFees = Fee::where('status', 'pending')->count();
+        $paidFees = Fee::where('status', 'paid')->count();
 
         return response()->json([
             'data' => [
-                'income'          => (float) $totalIncome,
-                'expenses'        => (float) $totalExpenses,
-                'net_balance'     => (float) $netBalance,
-                'active_semester' => $semesterName,
+                'total_income'     => (float) $totalIncome,
+                'total_expense'    => (float) $totalExpense,
+                'net_balance'      => (float) ($totalIncome - $totalExpense),
+                'pending_fees'     => $pendingFees,
+                'paid_fees'        => $paidFees,
+                'recent_transactions' => Transaction::orderByDesc('date')
+                    ->limit(10)
+                    ->get(),
             ]
         ]);
     }

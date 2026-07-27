@@ -6,45 +6,61 @@ use App\Http\Controllers\Controller;
 use App\Models\Course;
 use App\Models\Department;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class CourseController extends Controller
 {
-    public function index()
+    /**
+     * GET /api/v1/admin/courses
+     */
+    public function index(Request $request)
     {
-        $courses = Course::with('department')->get()->map(function($course) {
-            return [
-                'public_id' => $course->public_id,
-                'name' => $course->name,
-                'code' => $course->code,
+        $query = Course::with('department');
 
-                'department' => $course->department ? [
-                    'public_id' => $course->department->public_id,
-                    'name' => $course->department->name,
-                    'code' => $course->department->code,
-                ] : null
-            ];
-        });
+        if ($request->filled('department_public_id')) {
+            $department = Department::where('public_id', $request->department_public_id)->first();
+            if ($department) {
+                $query->where('department_db_id', $department->db_id);
+            }
+        }
 
-        return response()->json(['data' => $courses]);
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where('name', 'like', "%{$search}%");
+        }
+
+        $courses = $query->orderBy('name')->get();
+
+        return response()->json([
+            'data' => $courses
+        ]);
     }
 
+    /**
+     * POST /api/v1/admin/courses
+     */
     public function store(Request $request)
     {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'code' => 'required|string|max:20|unique:courses,code',
-            'department_public_id' => 'required|exists:departments,public_id'
+        $validated = $request->validate([
+            'name'                 => 'required|string|max:255',
+            'department_public_id' => 'required|exists:departments,public_id',
+            'code'                 => 'nullable|integer',
         ]);
 
-        // Resolve UUID to ID
-        $dept = Department::where('public_id', $request->department_public_id)->first();
+        $department = Department::where('public_id', $validated['department_public_id'])->firstOrFail();
 
         $course = Course::create([
-            'name' => $request->name,
-            'code' => $request->code,
-            'department_id' => $dept->id
+            'public_id'        => (string) Str::uuid(),
+            'name'             => $validated['name'],
+            'department_db_id' => $department->db_id,
+            'code'             => $validated['code'] ?? 0,
         ]);
 
-        return response()->json(['message' => 'Course created', 'data' => $course], 201);
+        $course->load('department');
+
+        return response()->json([
+            'message' => 'Course created successfully',
+            'data'    => $course
+        ], 201);
     }
 }

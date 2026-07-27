@@ -4,35 +4,59 @@ namespace App\Models;
 
 use App\Traits\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class ExamPaper extends Model
 {
     use HasPublicId;
-    protected $guarded = ['id'];
+
+    protected $primaryKey = 'db_id';
 
     protected $fillable = [
-        'exam_season_id',
-        'program_course_id',
+        'public_id',
+        'exam_season_db_id',
+        'program_db_id',
+        'course_db_id',
         'date',
         'start_time',
         'duration_minutes',
-        'location'
+        'location',
     ];
 
     protected $casts = [
         'date' => 'date',
     ];
 
-    public function programCourse()
+    protected $hidden = [
+        'db_id',
+    ];
+
+    public function getRouteKeyName()
     {
-        return $this->belongsTo(ProgramCourse::class, 'program_course_id');
+        return 'public_id';
     }
 
-    public function examSeason() {
-        return $this->belongsTo(ExamSeason::class, 'exam_season_id');
-    }
-    public function getCourseAttribute()
+    protected static function booted()
     {
-        return $this->programCourse->course ?? null;
+        static::creating(function (ExamPaper $paper) {
+            if (empty($paper->public_id)) {
+                $paper->public_id = (string) Str::uuid();
+            }
+        });
+    }
+
+    public function examSeason()
+    {
+        return $this->belongsTo(ExamSeason::class, 'exam_season_db_id', 'db_id');
+    }
+
+    public function program()
+    {
+        return $this->belongsTo(Program::class, 'program_db_id', 'db_id');
+    }
+
+    public function course()
+    {
+        return $this->belongsTo(Course::class, 'course_db_id', 'db_id');
     }
 }

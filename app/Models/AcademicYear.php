@@ -6,7 +6,7 @@ use App\Traits\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
-class ExamSeason extends Model
+class AcademicYear extends Model
 {
     use HasPublicId;
 
@@ -15,7 +15,6 @@ class ExamSeason extends Model
     protected $fillable = [
         'public_id',
         'name',
-        'semester_db_id',
         'is_active',
     ];
 
@@ -34,25 +33,20 @@ class ExamSeason extends Model
 
     protected static function booted()
     {
-        static::creating(function (ExamSeason $season) {
-            if (empty($season->public_id)) {
-                $season->public_id = (string) Str::uuid();
+        static::creating(function (AcademicYear $year) {
+            if (empty($year->public_id)) {
+                $year->public_id = (string) Str::uuid();
             }
         });
     }
 
-    public function semester()
+    public function semesters()
     {
-        return $this->belongsTo(Semester::class, 'semester_db_id', 'db_id');
+        return $this->hasMany(Semester::class, 'academic_year_db_id', 'db_id');
     }
 
-    public function examPapers()
+    public function scopeActive($query)
     {
-        return $this->hasMany(ExamPaper::class, 'exam_season_db_id', 'db_id');
-    }
-
-    public static function active()
-    {
-        return static::where('is_active', true)->first();
+        return $query->where('is_active', true);
     }
 }

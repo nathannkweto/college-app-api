@@ -4,39 +4,58 @@ namespace App\Models;
 
 use App\Traits\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
 
 class Program extends Model
 {
     use HasPublicId;
 
-    protected $guarded = ['id'];
+    protected $primaryKey = 'db_id';
+
     protected $fillable = [
-        'name', 'code', 'total_semesters',
-        'qualification_id', 'department_id',
-        'lecturer_id'
+        'public_id',
+        'name',
+        'tag',
+        'program_number',
+        'level_db_id',
+        'department_db_id',
     ];
 
-    public function courses(): BelongsToMany
+    protected $hidden = [
+        'db_id',
+    ];
+
+    public function getRouteKeyName()
     {
-        return $this->belongsToMany(Course::class, 'program_courses')
-            ->using(ProgramCourse::class) // <--- ADD THIS LINE
-            ->withPivot('semester_sequence', 'lecturer_id')
-            ->orderByPivot('semester_sequence');
+        return 'public_id';
     }
 
-    public function department(): BelongsTo
+    protected static function booted()
     {
-        return $this->belongsTo(Department::class);
+        static::creating(function (Program $program) {
+            if (empty($program->public_id)) {
+                $program->public_id = (string) Str::uuid();
+            }
+        });
     }
 
-    public function qualification(): BelongsTo
+    public function level()
     {
-        return $this->belongsTo(Qualification::class);
+        return $this->belongsTo(Level::class, 'level_db_id', 'db_id');
     }
 
-    public function students() {
-        return $this->hasMany(Student::class);
+    public function department()
+    {
+        return $this->belongsTo(Department::class, 'department_db_id', 'db_id');
+    }
+
+    public function students()
+    {
+        return $this->hasMany(Student::class, 'program_db_id', 'db_id');
+    }
+
+    public function timetableEntries()
+    {
+        return $this->hasMany(TimetableEntry::class, 'program_db_id', 'db_id');
     }
 }

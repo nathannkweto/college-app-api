@@ -4,41 +4,69 @@ namespace App\Models;
 
 use App\Traits\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class Semester extends Model
 {
     use HasPublicId;
-    protected $guarded = ['id'];
+
+    protected $primaryKey = 'db_id';
 
     protected $fillable = [
-        'academic_year', 'semester_number', 'is_active',
-        'start_date', 'length_weeks'
+        'public_id',
+        'academic_year',
+        'academic_year_db_id',
+        'semester_number',
+        'is_active',
+        'start_date',
+        'length_weeks',
     ];
 
     protected $casts = [
         'start_date' => 'date',
-        'is_active' => 'boolean',
+        'is_active'  => 'boolean',
     ];
 
-    // Helper to find the active semester
-    public static function active()
+    protected $hidden = [
+        'db_id',
+    ];
+
+    public function getRouteKeyName()
     {
-        return self::where('is_active', true)->first();
+        return 'public_id';
     }
 
-    public function examSeasons()
+    protected static function booted()
     {
-        return $this->hasMany(ExamSeason::class);
+        static::creating(function (Semester $semester) {
+            if (empty($semester->public_id)) {
+                $semester->public_id = (string) Str::uuid();
+            }
+        });
+    }
+
+    public function academicYear()
+    {
+        return $this->belongsTo(AcademicYear::class, 'academic_year_db_id', 'db_id');
     }
 
     public function timetableEntries()
     {
-        return $this->hasMany(TimetableEntry::class);
+        return $this->hasMany(TimetableEntry::class, 'semester_db_id', 'db_id');
+    }
+
+    public function results()
+    {
+        return $this->hasMany(Result::class, 'semester_db_id', 'db_id');
     }
 
     public function scopeActive($query)
     {
-        // We handle the "String Literal" requirement here, once, forever.
-        return $query->where('is_active', 'true');
+        return $query->where('is_active', true);
+    }
+
+    public static function getActive()
+    {
+        return self::where('is_active', true)->first();
     }
 }

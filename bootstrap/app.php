@@ -21,9 +21,11 @@ return Application::configure(basePath: dirname(__DIR__))
             '/_google-cloud-tasks/*'
         ]);
         $middleware->trustProxies(at: '*');
+
+        // Temporary workaround for the PCRE/TrimStrings null-byte bug.
+        $middleware->remove(\Illuminate\Foundation\Http\Middleware\TrimStrings::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        // ADD THIS BLOCK HERE:
         $exceptions->shouldRenderJsonWhen(function ($request, $e) {
             if ($request->is('api/*')) {
                 return true;
@@ -32,4 +34,3 @@ return Application::configure(basePath: dirname(__DIR__))
             return $request->expectsJson();
         });
     })->create();
-
