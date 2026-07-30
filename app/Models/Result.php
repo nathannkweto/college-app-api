@@ -59,4 +59,11 @@ class Result extends Model
     {
         return $this->belongsTo(Course::class, 'course_db_id', 'db_id');
     }
+
+    public function getPassedAttribute(): bool
+    {
+        return $this->score !== null && $this->pass_mark !== null
+            ? $this->score >= $this->pass_mark
+            : false;
+    }
 }

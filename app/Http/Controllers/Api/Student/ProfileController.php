@@ -8,13 +8,9 @@ use Illuminate\Support\Facades\Auth;
 
 class ProfileController extends Controller
 {
-    /**
-     * Get the authenticated student's profile.
-     */
     public function show(Request $request)
     {
-        $user = Auth::user();
-        $student = $user->profile()->with(['program.department'])->first();
+        $student = Auth::user()->profile()->with(['level', 'program.department'])->first();
 
         if (!$student) {
             return response()->json(['message' => 'Student profile not found.'], 404);
@@ -22,14 +18,26 @@ class ProfileController extends Controller
 
         return response()->json([
             'data' => [
-                'student_id'       => $student->student_id,
-                'first_name'       => $student->first_name,
-                'last_name'        => $student->last_name,
-                'email'            => $user->email,
-                'program_name'     => $student->program->name ?? 'N/A',
-                'current_semester' => (int) $student->current_semester_sequence,
-                'avatar_url'       => null, // Add this if you have it
-            ]
+                'public_id' => $student->public_id,
+                'student_id' => $student->id, // business ID, e.g. "2025-BA-001"
+                'first_name' => $student->first_name,
+                'last_name' => $student->last_name,
+                'email' => $student->email,
+                'phone' => $student->phone,
+                'gender' => $student->gender,
+                'dob' => $student->dob?->format('Y-m-d'),
+                'address' => $student->address,
+                'enrollment_date' => $student->enrollment_date?->format('Y-m-d'),
+                'level' => $student->level ? [
+                    'public_id' => $student->level->public_id,
+                    'name' => $student->level->name,
+                ] : null,
+                'program' => $student->program ? [
+                    'public_id' => $student->program->public_id,
+                    'name' => $student->program->name,
+                    'department' => $student->program->department?->name,
+                ] : null,
+            ],
         ]);
     }
 }
