@@ -24,10 +24,14 @@ class Lecturer extends Model
         'department_db_id',
         'employment_date',
         'user_db_id',
+        'national_id_number',
+        'dob',
+        'address',
     ];
 
     protected $casts = [
         'employment_date' => 'date',
+        'dob' => 'date',
     ];
 
     protected $hidden = [

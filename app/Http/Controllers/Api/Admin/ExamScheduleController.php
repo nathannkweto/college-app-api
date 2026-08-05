@@ -24,7 +24,7 @@ class ExamScheduleController extends Controller
         $program = Program::where('public_id', $request->program_public_id)->firstOrFail();
         $season = ExamSeason::where('public_id', $request->season_public_id)->firstOrFail();
 
-        $papers = ExamPaper::with('course')
+        $papers = ExamPaper::with(['course.department', 'program.department'])
             ->where('exam_season_db_id', $season->db_id)
             ->where('program_db_id', $program->db_id)
             ->get();
@@ -77,7 +77,7 @@ class ExamScheduleController extends Controller
 
         return response()->json([
             'message' => 'Exam scheduled successfully.',
-            'data' => $this->format($paper->load('course')),
+            'data' => $this->format($paper->load(['course.department', 'program.department'])),
         ], 201);
     }
 
@@ -92,6 +92,21 @@ class ExamScheduleController extends Controller
             'course' => $paper->course ? [
                 'public_id' => $paper->course->public_id,
                 'name' => $paper->course->name,
+                'code' => $paper->course->code,
+                'department' => $paper->course->department ? [
+                    'public_id' => $paper->course->department->public_id,
+                    'name' => $paper->course->department->name,
+                    'code' => $paper->course->department->code,
+                ] : null,
+            ] : null,
+            'program' => $paper->program ? [
+                'public_id' => $paper->program->public_id,
+                'name' => $paper->program->name,
+                'department' => $paper->program->department ? [
+                    'public_id' => $paper->program->department->public_id,
+                    'name' => $paper->program->department->name,
+                    'code' => $paper->program->department->code,
+                ] : null,
             ] : null,
         ];
     }

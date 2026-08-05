@@ -2,36 +2,45 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Relations\Pivot;
+use App\Traits\HasPublicId;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
-class ProgramCourse extends Pivot
+class ProgramCourse extends Model
 {
-    // Explicitly define table name since it follows the pivot convention
-    protected $table = 'program_courses';
+    use HasPublicId;
 
-    // Since your migration has $table->id(), we enable incrementing
-    public $incrementing = true;
+    protected $primaryKey = 'db_id';
 
-    // Relationships to the parents
+    protected $fillable = [
+        'public_id',
+        'program_db_id',
+        'course_db_id',
+        'semester_sequence',
+        'lecturer_db_id',
+    ];
+
+    protected static function booted()
+    {
+        static::creating(function (ProgramCourse $pc) {
+            if (empty($pc->public_id)) {
+                $pc->public_id = (string) Str::uuid();
+            }
+        });
+    }
+
     public function program()
     {
-        return $this->belongsTo(Program::class);
+        return $this->belongsTo(Program::class, 'program_db_id', 'db_id');
     }
 
     public function course()
     {
-        return $this->belongsTo(Course::class);
+        return $this->belongsTo(Course::class, 'course_db_id', 'db_id');
     }
 
     public function lecturer()
     {
-        return $this->belongsTo(Lecturer::class, 'lecturer_id');
-    }
-
-    // Relationship to the Exam Paper
-    // One "Course in a Program" can have many exam papers (usually 1 per season)
-    public function examPapers()
-    {
-        return $this->hasMany(ExamPaper::class, 'program_course_id');
+        return $this->belongsTo(Lecturer::class, 'lecturer_db_id', 'db_id');
     }
 }

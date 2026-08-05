@@ -47,9 +47,15 @@ Route::prefix('v1')->group(function () {
             });
 
             // --- Academics: Departments, Qualifications, Courses ---
-            Route::apiResource('departments', 'DepartmentController')->only(['index', 'store']);
+            Route::controller('DepartmentController')->group(function () {
+                Route::get('departments', 'index');
+                Route::post('departments', 'store');
+                Route::put('departments/{public_id}', 'update');
+                Route::delete('departments/{public_id}', 'destroy');
+            });
+            
             Route::apiResource('qualifications', 'QualificationController')->only(['index', 'store']);
-            Route::apiResource('courses', 'CourseController')->only(['index', 'store']);
+            Route::apiResource('courses', 'CourseController')->only(['index', 'store', 'update', 'destroy']);
 
             // --- Academics: Programs & Curriculum ---
             Route::controller('ProgramController')->group(function () {
@@ -183,6 +189,5 @@ Route::prefix('v1')->group(function () {
             // --- Finance ---
             Route::get('finance', 'FinanceController@index');
         });
-
     }); // End Middleware Auth
 });

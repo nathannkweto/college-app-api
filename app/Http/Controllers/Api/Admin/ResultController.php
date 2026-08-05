@@ -62,22 +62,37 @@ class ResultController extends Controller
     {
         $request->validate([
             'student_public_id' => 'required|exists:students,public_id',
+            'semester_public_id' => 'required|exists:semesters,public_id',
         ]);
 
         $student = Student::with(['program', 'level'])
             ->where('public_id', $request->student_public_id)
             ->firstOrFail();
 
-        $results = Result::with(['course', 'semester'])
+        $semester = Semester::where('public_id', $request->semester_public_id)->firstOrFail();
+
+        $results = Result::with('course')
             ->where('student_db_id', $student->db_id)
-            ->orderBy('semester_db_id')
-            ->get()
-            ->groupBy('semester_db_id');
+            ->where('semester_db_id', $semester->db_id)
+            ->get();
 
         return response()->json([
             'data' => [
-                'student' => $student,
-                'results' => $results,
+                'student' => [
+                    'public_id' => $student->public_id,
+                    'student_id' => $student->id,
+                    'first_name' => $student->first_name,
+                    'last_name' => $student->last_name,
+                    'email' => $student->email,
+                ],
+                // Spec wants a flat array of CourseResult, not grouped by semester
+                // (the semester is now implied by the required query param instead).
+                'results' => $results->map(fn (Result $r) => [
+                    'course_name' => $r->course?->name,
+                    'course_code' => $r->course?->code,
+                    'score' => (float) $r->score,
+                    'grade' => $r->grade,
+                ])->values(),
             ],
         ]);
     }

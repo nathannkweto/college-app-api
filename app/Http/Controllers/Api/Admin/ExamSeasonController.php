@@ -84,12 +84,15 @@ class ExamSeasonController extends Controller
             'public_id' => $season->public_id,
             'name' => $season->name,
             'is_active' => $season->is_active,
+            'created_at' => $season->created_at?->toIso8601String(),
             'semester' => $season->semester ? [
                 'public_id' => $season->semester->public_id,
+                'academic_year' => $season->semester->academic_year,
                 'semester_number' => $season->semester->semester_number,
-                'academic_year' => $season->semester->academicYear?->name,
+                'is_active' => $season->semester->is_active,
+                'start_date' => $season->semester->start_date?->format('Y-m-d'),
+                'length_weeks' => $season->semester->length_weeks,
             ] : null,
-            'created_at' => $season->created_at?->toIso8601String(),
         ];
     }
 }
