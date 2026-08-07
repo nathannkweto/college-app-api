@@ -11,52 +11,53 @@ class SemesterController extends Controller
 {
     /**
      * List semesters.
+     * GET /semesters
      */
     public function index(Request $request)
     {
-        $semesters = Semester::with('academicYear')->orderByDesc('start_date')->paginate(15);
+        $semesters = Semester::with('academicYear')->orderByDesc('start_date')->get();
 
         return response()->json([
-            'data' => $semesters->getCollection()->map(fn (Semester $s) => $this->format($s)),
-            'meta' => [
-                'current_page' => $semesters->currentPage(),
-                'last_page' => $semesters->lastPage(),
-                'total' => $semesters->total(),
-            ],
+            'data' => $semesters->map(fn (Semester $s) => $this->format($s)),
         ]);
     }
 
     /**
      * Create a semester.
+     * POST /semesters
      */
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'academic_year_public_id' => 'required|string|exists:academic_years,public_id',
-            'semester_number' => 'required|integer|min:1|max:255',
+            'academic_year' => 'required|string',
+            'semester_number' => 'required|integer|in:1,2',
             'start_date' => 'required|date',
             'length_weeks' => 'required|integer|min:1',
+            'is_active' => 'required|boolean',
         ]);
 
-        $academicYear = AcademicYear::where('public_id', $validated['academic_year_public_id'])->firstOrFail();
+        // Lookup AcademicYear model if database requires relationship binding
+        $academicYear = AcademicYear::where('name', $validated['academic_year'])
+            ->orWhere('public_id', $validated['academic_year'])
+            ->first();
 
         $semester = Semester::create([
-            'academic_year_db_id' => $academicYear->db_id,
-            'academic_year' => $academicYear->name,
+            'academic_year_db_id' => $academicYear?->db_id,
+            'academic_year' => $validated['academic_year'],
             'semester_number' => $validated['semester_number'],
             'start_date' => $validated['start_date'],
             'length_weeks' => $validated['length_weeks'],
-            'is_active' => false,
+            'is_active' => $validated['is_active'],
         ]);
 
         return response()->json([
-            'message' => 'Semester created successfully.',
-            'data' => $this->format($semester->load('academicYear')),
+            'data' => $this->format($semester),
         ], 201);
     }
 
     /**
      * Get the currently active semester.
+     * GET /semesters/active
      */
     public function active(Request $request)
     {
@@ -66,11 +67,14 @@ class SemesterController extends Controller
             return response()->json(['message' => 'No active semester found.'], 404);
         }
 
-        return response()->json(['data' => $this->format($semester)]);
+        return response()->json([
+            'data' => $this->format($semester),
+        ]);
     }
 
     /**
      * End (deactivate) a semester.
+     * POST /semesters/{public_id}/end
      */
     public function end(Request $request, $public_id)
     {
@@ -78,22 +82,22 @@ class SemesterController extends Controller
         $semester->update(['is_active' => false]);
 
         return response()->json([
-            'message' => 'Semester ended successfully.',
             'data' => $this->format($semester),
-        ]);
+        ], 200);
     }
 
+    /**
+     * Formats the model strictly matching the OpenAPI `Semester` schema.
+     */
     private function format(Semester $semester): array
     {
         return [
-            'public_id' => $semester->public_id,
-            // Spec wants a flat string here, matching the legacy `academic_year`
-            // column directly rather than the `academic_year_db_id` relation.
-            'academic_year' => $semester->academic_year,
-            'semester_number' => $semester->semester_number,
-            'is_active' => $semester->is_active,
-            'start_date' => $semester->start_date?->format('Y-m-d'),
-            'length_weeks' => $semester->length_weeks,
+            'public_id' => (string) $semester->public_id,
+            'academic_year' => (string) $semester->academic_year,
+            'semester_number' => (int) $semester->semester_number,
+            'is_active' => (bool) $semester->is_active,
+            'start_date' => $semester->start_date ? \Carbon\Carbon::parse($semester->start_date)->format('Y-m-d') : null,
+            'length_weeks' => (int) $semester->length_weeks,
         ];
     }
 }
