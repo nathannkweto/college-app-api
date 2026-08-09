@@ -28,6 +28,7 @@ class SemesterController extends Controller
      */
     public function store(Request $request)
     {
+        return response()->json(['status' => 'I am running the NEW controller!'], 500);
         $validated = $request->validate([
             'academic_year' => 'required|string',
             'semester_number' => 'required|integer|in:1,2',
