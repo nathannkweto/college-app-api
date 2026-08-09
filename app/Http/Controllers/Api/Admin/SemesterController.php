@@ -18,7 +18,7 @@ class SemesterController extends Controller
         $semesters = Semester::with('academicYear')->orderByDesc('start_date')->get();
 
         return response()->json([
-            'data' => $semesters->map(fn (Semester $s) => $this->format($s)),
+            'data' => $semesters->map(fn(Semester $s) => $this->format($s)),
         ]);
     }
 
@@ -36,18 +36,30 @@ class SemesterController extends Controller
             'is_active' => 'required|boolean',
         ]);
 
-        // Lookup AcademicYear model if database requires relationship binding
-        $academicYear = AcademicYear::where('name', $validated['academic_year'])
-            ->orWhere('public_id', $validated['academic_year'])
+        // 1. Check if AcademicYear exists by public_id or name; create it by name if missing
+        $academicYear = AcademicYear::where('public_id', $validated['academic_year'])
+            ->orWhere('name', $validated['academic_year'])
             ->first();
 
+        if (!$academicYear) {
+            $academicYear = AcademicYear::create([
+                'name' => $validated['academic_year'],
+            ]);
+        }
+
+        // 2. Deactivate all active semesters if this new one is marked active
+        if ($validated['is_active']) {
+            Semester::where('is_active', true)->update(['is_active' => false]);
+        }
+
+        // 3. Create the semester using the db_id and name from the model
         $semester = Semester::create([
-            'academic_year_db_id' => $academicYear?->db_id,
-            'academic_year' => $validated['academic_year'],
-            'semester_number' => $validated['semester_number'],
-            'start_date' => $validated['start_date'],
-            'length_weeks' => $validated['length_weeks'],
-            'is_active' => $validated['is_active'],
+            'academic_year_db_id' => $academicYear->db_id,
+            'academic_year'       => $academicYear->name,
+            'semester_number'     => $validated['semester_number'],
+            'start_date'          => $validated['start_date'],
+            'length_weeks'        => $validated['length_weeks'],
+            'is_active'           => $validated['is_active'],
         ]);
 
         return response()->json([
