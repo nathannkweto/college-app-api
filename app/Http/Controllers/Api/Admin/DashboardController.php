@@ -20,10 +20,12 @@ class DashboardController extends Controller
     public function metrics(Request $request)
     {
         return response()->json([
+            'data' => [
                 'total_students' => Student::count(),
-                'total_lecturers' => Student::count(),
+                'total_lecturers' => Lecturer::count(),
                 'total_programs' => Program::count(),
                 'levels' => Level::count(),
+            ],
         ]);
     }
 
@@ -38,14 +40,16 @@ class DashboardController extends Controller
         $activeSemester = Semester::getActive();
 
         return response()->json([
-            'income' => $income,
-            'expenses' => $expenses,
-            'net_balance' => $income - $expenses,
-            // Spec types this as a plain string (not format: uuid, unlike every
-            // other public_id field here) — a human-readable label, not the raw id.
+            'data' => [
+                'income' => $income,
+                'expenses' => $expenses,
+                'net_balance' => $income - $expenses,
+                // Spec types this as a plain string (not format: uuid, unlike every
+                // other public_id field here) — a human-readable label, not the raw id.
                 'active_semester' => $activeSemester
                     ? "Semester {$activeSemester->semester_number} - {$activeSemester->academic_year}"
                     : null,
+            ],
         ]);
     }
 }
