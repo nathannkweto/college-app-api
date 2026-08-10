@@ -1,102 +1,48 @@
-name: Deploy to Cloud Run
+# .github/workflows/deploy-production.yml
+name: Deploy Laravel to Hostinger (Production)
 
 on:
   push:
     branches:
       - master
 
-env:
-  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  REGION: us-east1
-  SERVICE_NAME: college-app
-
 jobs:
   deploy:
+    name: Deploy Application
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-
-      # 1. Authenticate with Google Cloud
-      - id: auth
-        uses: google-github-actions/auth@v2
+      - name: Trigger Remote SSH Commands
+        uses: appleboy/ssh-action@v1.0.3
         with:
-          credentials_json: '${{ secrets.GCP_SA_KEY }}'
-
-      # 2. Setup gcloud CLI
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-
-      # 3. Configure Docker
-      - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker us-east1-docker.pkg.dev
-
-      # 4. Build & Push Image
-      - name: Build and Push Container
-        run: |
-          docker build -t us-east1-docker.pkg.dev/$PROJECT_ID/college-app-repo/$SERVICE_NAME:${{ github.sha }} .
-          docker push us-east1-docker.pkg.dev/$PROJECT_ID/college-app-repo/$SERVICE_NAME:${{ github.sha }}
-
-      # 5. Deploy to Cloud Run
-      - name: Deploy to Cloud Run
-        uses: google-github-actions/deploy-cloudrun@v2
-        with:
-          service: ${{ env.SERVICE_NAME }}
-          image: us-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/college-app-repo/${{ env.SERVICE_NAME }}:${{ github.sha }}
-          region: ${{ env.REGION }}
-          flags: '--allow-unauthenticated'
-          env_vars: |
-            APP_KEY=${{ secrets.APP_KEY }}
-            APP_DEBUG=false
-            LOG_CHANNEL=stderr
-
-            DB_CONNECTION=mysql
-            DB_HOST=${{ secrets.DB_HOST }}
-            DB_PORT=3306
-            DB_DATABASE=${{ secrets.DB_DATABASE }}
-            DB_USERNAME=${{ secrets.DB_USERNAME }}
-            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-
-            # 🔥 IMPORTANT: MUST be comma-separated, no quotes
-            CORS_ALLOWED_ORIGINS=${{ secrets.CORS_ALLOWED_ORIGINS }}
-
-            MAIL_MAILER=${{ secrets.MAIL_MAILER }}
-            MAIL_HOST=${{ secrets.MAIL_HOST }}
-            MAIL_PORT=${{ secrets.MAIL_PORT }}
-            MAIL_USERNAME=${{ secrets.MAIL_USERNAME }}
-            MAIL_PASSWORD=${{ secrets.MAIL_PASSWORD }}
-            MAIL_ENCRYPTION=${{ secrets.MAIL_ENCRYPTION }}
-            MAIL_FROM_ADDRESS=${{ secrets.MAIL_FROM_ADDRESS }}
-            MAIL_FROM_NAME=${{ secrets.MAIL_FROM_NAME }}
-
-            GOOGLE_CLOUD_PROJECT_ID=${{ env.PROJECT_ID }}
-            GOOGLE_CLOUD_LOCATION=${{ env.REGION }}
-            GOOGLE_CLOUD_TASKS_QUEUE=${{ secrets.GOOGLE_CLOUD_TASKS_QUEUE }}
-            GOOGLE_CLOUD_RUN_SERVICE_NAME=${{ env.SERVICE_NAME }}
-            GOOGLE_CLOUD_SERVICE_ACCOUNT=${{ secrets.GOOGLE_CLOUD_SERVICE_ACCOUNT }}
-            QUEUE_CONNECTION=${{ secrets.QUEUE_CONNECTION }}
-
-      # 6. 🔥 FORCE CLEAR CONFIG CACHE (THIS IS WHAT FIXES YOUR "ONLY FIRST ORIGIN" ISSUE)
-      - name: Clear Laravel Config Cache
-        run: |
-          echo "Clearing config cache..."
-          gcloud run services update $SERVICE_NAME \
-            --region $REGION \
-            --update-env-vars="FORCE_CONFIG_RELOAD=$(date +%s)"
-
-      # 7. Cloud Run Job
-      - name: Update Cloud Run Job
-        run: |
-          gcloud run jobs deploy admin-accounts \
-            --image us-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/college-app-repo/${{ env.SERVICE_NAME }}:${{ github.sha }} \
-            --region ${{ env.REGION }} \
-            --set-env-vars="DB_CONNECTION=mysql,DB_HOST=${{ secrets.DB_HOST }},DB_DATABASE=${{ secrets.DB_DATABASE }},DB_USERNAME=${{ secrets.DB_USERNAME }},DB_PASSWORD=${{ secrets.DB_PASSWORD }}" \
-            --command="php" \
-            --vpc-connector matem \
-            --vpc-egress all \
-            --args="artisan,tinker,scripts/admins.php"
-
-      # 8. Execute Job
-      - name: Execute Cloud Run Job
-        run: |
-          gcloud run jobs execute admin-accounts --region ${{ env.REGION }} --wait
+          host: ${{ secrets.HOSTINGER_SSH_HOST }}
+          username: ${{ secrets.HOSTINGER_SSH_USER }}
+          password: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
+          port: ${{ secrets.HOSTINGER_SSH_PORT }}
+          script: |
+            cd ${{ secrets.HOSTINGER_PRODUCTION_PATH }}
+            
+            # Put app into maintenance mode
+            php artisan down || true
+            
+            # Fetch latest changes from master
+            git fetch origin master
+            git reset --hard origin/master
+            
+            # Install PHP dependencies
+            composer install --no-dev --optimize-autoloader --no-interaction
+            
+            # Run database migrations
+            # php artisan migrate --force
+            
+            # Clear and rebuild caches
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            php artisan event:cache
+            
+            # Ensure storage link exists
+            php artisan storage:link || true
+            
+            # Bring app back online
+            php artisan up
