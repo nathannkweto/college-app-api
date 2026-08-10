@@ -21,7 +21,7 @@ class DashboardController extends Controller
     {
         return response()->json([
                 'total_students' => Student::count(),
-                'total_lecturers' => Lecturer::count(),
+                'total_lecturers' => Student::count(),
                 'total_programs' => Program::count(),
                 'levels' => Level::count(),
         ]);
